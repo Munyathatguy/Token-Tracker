@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 — 2026-10-28
+- Retain current/weekly readings independently; suppress empty metadata-only quota cards.
+- Independent signed-in Codex account refresh without model requests.
+- Visible reset times/countdowns and persistent warning/exhaustion/reset/availability events.
+- Configurable alarm sounds, volume and playback receipts.
+- Reversible Codex model-awareness hooks with explicit trust/receipt status.
+- Remove the design-preview toggle from normal dashboards.
+
 ## 0.2.0 — 2026-10-28
 - Compact 260 × 96 strip by default, with smaller secondary text and prominent remaining-allowance figures.
 - Expanded panel and floating icon; explicit always-visible, updates-only, floating-icon-only and tray-only behaviours.

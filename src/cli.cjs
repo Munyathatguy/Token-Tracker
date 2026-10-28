@@ -60,7 +60,7 @@ async function main() {
             result = {
               protocolVersion: m.params?.protocolVersion || "2024-11-05",
               capabilities: { tools: {} },
-              serverInfo: { name: "token-tracker", version: "0.2.0" },
+              serverInfo: { name: "token-tracker", version: "0.3.0" },
             };
           else if (m.method === "tools/list")
             result = {
@@ -139,6 +139,30 @@ async function main() {
   try {
     data = JSON.parse(raw);
   } catch {
+    return;
+  }
+  if (mode === "codex-hook") {
+    try {
+      const event = data.hook_event_name;
+      const r = await call({ action: "codex", event, data });
+      if (r.text) {
+        await new Promise((resolve) =>
+          process.stdout.write(
+            JSON.stringify({
+              hookSpecificOutput: {
+                hookEventName: event,
+                additionalContext: r.text,
+              },
+            }) + "\n",
+            resolve,
+          ),
+        );
+        if (r.deliveryId)
+          await call({ action: "delivery", deliveryId: r.deliveryId });
+      } else if (event === "Stop") process.stdout.write("{}\n");
+    } catch {
+      if (data.hook_event_name === "Stop") process.stdout.write("{}\n");
+    }
     return;
   }
   if (mode === "claude-statusline") {

@@ -1,6 +1,13 @@
 # Verification — 2026-10-28
 
-## Verified locally
+## v0.3 repair acceptance
+- 26 functional tests, including independent quota transport with no model turn; empty premium-bucket suppression; 0% current / 84% weekly retention; partial windows; persisted exhaustion/reset history; reversible Codex hooks; and a simulated 7% hook briefing with a wrap-up instruction.
+- Actual signed-in Codex account API read succeeded without reading auth files or starting a model request.
+- Updated Windows package passed native checks for single-card 0% / 84% display, no normal preview toggle, and a completed zero-volume audio playback receipt. The app was restarted with private history preserved.
+- The owner enabled the five exact Token Tracker hooks. Live automatic developer-context updates were received by this chat mid-turn; local hook/client-output records matched this chat and the stable helper matched source. This supersedes the earlier disconnected-Codex status below.
+- Physical speaker audibility and real future exhaustion/reset timing are not claimed from a silent test or a future promise. Earlier missed warnings cannot be recreated as delivered alerts.
+
+## Historical v0.2 local acceptance
 - Node 24.14.1; Electron 45.1.0; Windows x64.
 - `npm test`: 21 passing functional tests. Covers current/weekly remaining calculations; invalid/expired readings; latest-request vs cumulative context; privacy allowlisting; compaction deduplication/invalidation; incremental partial JSONL and restart; authenticated local IPC; prompt/start hook briefing; loop-free Stop handling; actual stdio MCP call; reversible Claude configuration; ordered planning thresholds; preferences across database restart; visibility modes; acknowledged single-use delivery notices; focus-free timed pop-ups and cancellation on user interaction.
 - `npm run check`: source syntax checks pass.
@@ -14,7 +21,7 @@
 
 ## Not yet verified / not yet implemented
 - Claude live installation and a real model's receipt of hook updates. Synthetic stdin -> CLI -> local bridge -> returned `additionalContext` is tested; that is not live model acceptance.
-- Automatic delivery to existing Codex Desktop conversations. Local-record observation does not establish a supported message-injection channel.
+- Broader Codex lifecycle-hook compatibility across versions and real future exhaustion/reset transitions; owner-chat live delivery is verified above.
 - Model completion/Stop updates are observed and saved; they are not automatically appended to the model at Stop because that can create another inference/feedback loop. Prompt/start delivery is implemented for Claude; completion delivery needs a client-specific safe mechanism.
 - Automatic semantic handoffs, workload-specific finishing reserves and exhaustion forecasting remain roadmap items. Current checkpoints/background-job notes are user-authored local records.
 - Other clients, multiple Claude profiles, signed installer/distribution, cross-platform tray behaviour, screen-reader validation and all display-scale combinations.

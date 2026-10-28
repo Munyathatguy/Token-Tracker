@@ -867,6 +867,30 @@ html[data-theme="light"] .compact-metrics:hover {
 .compact-metrics.no-context {
   grid-template-columns: 1fr 1fr;
 }
+.compact-resets {
+  font-size: 7px;
+  color: var(--muted);
+  line-height: 9px;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.usage-alerts {
+  margin: 20px 0;
+}
+.alarm-record {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.alarm-record p {
+  margin: 5px 0;
+}
+.alarm-record small {
+  color: var(--muted);
+  font-size: 10px;
+}
 .compact-bubble {
   position: absolute;
   top: 0;

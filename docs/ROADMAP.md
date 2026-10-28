@@ -5,7 +5,7 @@ Windows desktop app, independent metadata collector, quota-first bubble and dash
 
 ## Next integration work
 1. Owner-controlled live Claude acceptance: confirm statusline fields on the installed version, prompt/start delivery and reversible configuration.
-2. Supported direct Codex Desktop delivery/attachment research. Never claim a separate app-server process observes or controls existing Desktop chats.
+2. Broader Codex hook acceptance across versions and quota transitions. Trusted lifecycle-hook delivery is verified in the owner development chat; the separate app-server process only reads account quotas.
 3. Complete-session discovery beyond the bounded recent-file scan; display historical backfill progress and per-source capabilities.
 4. Client-owned SDK integrations for reliable prompt/completion delivery, including safe one-time completion feedback where the host supports it.
 5. Verified handoff automation: tie a finishing reserve to task type, save recovery records, validate the resulting work, preserve external job ownership and logs.

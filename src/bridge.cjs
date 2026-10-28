@@ -5,7 +5,7 @@ const path = require("node:path");
 const { normaliseClaude, briefing } = require("./core.cjs");
 async function startBridge(store, dir, onDelivery = () => {}) {
   const pending = new Map();
-  function issue(client, sessionId) {
+  function issue(client, sessionId, summary = "") {
     for (const [id, t] of pending)
       if (Date.now() - t.at > 30000) pending.delete(id);
     if (pending.size >= 100) pending.delete(pending.keys().next().value);
@@ -14,6 +14,7 @@ async function startBridge(store, dir, onDelivery = () => {}) {
       client,
       sessionId: typeof sessionId === "string" ? sessionId.slice(0, 200) : "",
       at: Date.now(),
+      summary: summary.slice(0, 3000),
     };
     pending.set(ticket.id, ticket);
     return ticket.id;
@@ -79,6 +80,91 @@ async function startBridge(store, dir, onDelivery = () => {}) {
             ...(["UserPromptSubmit", "SessionStart"].includes(msg.event)
               ? { deliveryId: issue("Claude", "claude:" + msg.data.session_id) }
               : {}),
+          };
+        } else if (msg.action === "codex") {
+          if (
+            ![
+              "SessionStart",
+              "UserPromptSubmit",
+              "PreToolUse",
+              "PostToolUse",
+              "Stop",
+            ].includes(msg.event) ||
+            typeof msg.data?.session_id !== "string" ||
+            msg.data.session_id.length > 200
+          )
+            throw Error("Invalid Codex hook event");
+          const nativeId = msg.data.session_id,
+            id = "codex:" + nativeId;
+          const old = store.get("sessions", id);
+          const now = Date.now();
+          store.apply(
+            {
+              session: {
+                id,
+                nativeId,
+                client: "Codex",
+                ...(old
+                  ? {}
+                  : { account: "unverified-local", project: "Codex session" }),
+                lastActivity: now,
+                observedAt: now,
+                ...(msg.event === "Stop"
+                  ? { status: "Waiting" }
+                  : msg.event === "UserPromptSubmit"
+                    ? { status: "Working" }
+                    : {}),
+              },
+              event: "Codex hook observed: " + msg.event,
+              at: now,
+            },
+            crypto.randomUUID(),
+          );
+          store.put("settings", "lastCodexHook", {
+            at: now,
+            event: msg.event,
+            sessionId: id,
+          });
+          const snap = store.snapshot(),
+            key = "codexHookOutput:" + id,
+            last = store.get("settings", key);
+          const signature = JSON.stringify(
+            snap.accounts
+              .filter((a) => a.client === "Codex")
+              .map((a) => [
+                a.id,
+                ...[a.current, a.weekly].map((w) =>
+                  !w
+                    ? "unknown"
+                    : w.remaining === 0
+                      ? "exhausted"
+                      : w.remaining <= snap.settings.alertWrapRemaining
+                        ? "wrap"
+                        : w.remaining <= snap.settings.alertPrepareRemaining
+                          ? "prepare"
+                          : w.remaining <= snap.settings.alertWarnRemaining
+                            ? "warning"
+                            : "normal",
+                ),
+              ]),
+          );
+          const send =
+            msg.event !== "Stop" &&
+            (["SessionStart", "UserPromptSubmit"].includes(msg.event) ||
+              !last ||
+              now - last.at >= 60000 ||
+              last.signature !== signature);
+          const bound = old?.account && old.account !== "unverified-local";
+          const text = send
+            ? (bound
+                ? ""
+                : "Session account not matched yet; account-wide readings follow. ") +
+              briefing(snap, bound ? id : "")
+            : "";
+          if (send) store.put("settings", key, { at: now, signature });
+          result = {
+            text,
+            ...(send ? { deliveryId: issue("Codex", id, text) } : {}),
           };
         } else if (msg.action === "delivery") {
           const ticket = pending.get(msg.deliveryId);

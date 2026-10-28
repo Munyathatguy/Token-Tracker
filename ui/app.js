@@ -51,7 +51,7 @@ const clock = () =>
   });
 function demo() {
   const now = Date.now();
-  return {
+  const result = {
     at: now,
     accounts: [
       {
@@ -128,13 +128,31 @@ function demo() {
     integrations: live?.integrations || {},
     claudeInstalled: false,
   };
+  if (params.get("scenario") === "exhausted") {
+    result.accounts = [result.accounts[0]];
+    result.accounts[0].current.remaining = 0;
+    result.accounts[0].weekly.remaining = 84;
+    result.alerts = [
+      {
+        title: "Codex current allowance exhausted — 0% left",
+        body: "Illustrative regression case: weekly allowance remains independent.",
+        at: now,
+        notification: "example only",
+        soundStatus: "disabled",
+      },
+    ];
+  }
+  return result;
 }
 function quota(w, a) {
-  const expired = w?.resetsAt && w.resetsAt <= Date.now();
-  const stale = a && Date.now() - a.at > 600000;
-  const valid = w && w.state === "reported" && !expired;
-  const n = valid ? w.remaining : null;
-  return `<div class="quota-number mono">${n === null ? "—" : esc(n) + "%"}<small>${n === null ? "unavailable" : "remaining"}</small></div><div class="bar quota-rail ${n === null ? "unknown" : n <= (live?.settings.alertWrapRemaining ?? 8) ? "red" : n <= (live?.settings.alertWarnRemaining ?? 30) ? "amber" : ""}"><span style="width:${n === null ? 0 : n}%"></span></div><div class="reset">${expired ? "Awaiting refreshed reading" : stale ? "Stale · last reported value" : reset(w?.resetsAt)}</div>`;
+  const n = Number.isFinite(w?.remaining) ? w.remaining : null;
+  const at = w?.reportedAt || a?.at;
+  const stale = !at || Date.now() - at > 600000;
+  const due = w?.resetsAt && w.resetsAt <= Date.now();
+  const minutes = w?.resetsAt
+    ? Math.max(0, Math.ceil((w.resetsAt - Date.now()) / 60000))
+    : null;
+  return `<div class="quota-number mono">${n === null ? "Not reported" : esc(n) + "%"}<small>${n === null ? "" : due || stale ? "last reported left" : "remaining"}</small></div><div class="bar quota-rail ${n === null ? "unknown" : n <= (live?.settings.alertWrapRemaining ?? 8) ? "red" : n <= (live?.settings.alertWarnRemaining ?? 30) ? "amber" : ""}"><span style="width:${n ?? 0}%"></span></div><div class="reset">${w?.resetsAt ? "Reset " + reset(w.resetsAt) + (due ? " · time reached, checking" : minutes < 60 ? " · in " + minutes + "m" : " · in " + Math.floor(minutes / 60) + "h " + (minutes % 60) + "m") : "Reset not reported"}</div>${stale ? '<div class="tiny muted">Last report ' + age(at) + "; retained independently</div>" : ""}`;
 }
 // Styles set in generated markup are restricted to numeric percentages from normalised data.
 function spectrum(s) {
@@ -172,9 +190,9 @@ function compactBubble(s) {
     s.sessions.find((x) => !x.stale && x.client === a?.client) ||
     s.sessions.find((x) => !x.stale);
   const pct = (w) =>
-    w && w.state === "reported" && (!w.resetsAt || w.resetsAt > Date.now())
+    Number.isFinite(w?.remaining)
       ? `${Math.round(w.remaining)}<small>%</small>`
-      : '<span class="unavailable">—</span>';
+      : '<span class="unavailable" title="Provider has not reported this window">?</span>';
   const stale = !a || Date.now() - a.at > 600000;
   const notice = s.bubble?.temporary
     ? s.lastPopup?.label
@@ -183,7 +201,7 @@ function compactBubble(s) {
       : stale
         ? "Stale reading"
         : "Reported";
-  return `<section class="compact-bubble"><header class="compact-header"><span class="compact-source"><span class="dot"></span>${esc(a?.client || "Token Tracker")}</span><span class="compact-notice" title="${esc(notice)}">${esc(notice || "Reported")}</span><div class="compact-controls">${quickControls(s)}<button class="icon-btn" data-action="settings" title="Settings" aria-label="Settings">⚙</button><button class="icon-btn" data-mode="expanded" title="Expand bubble" aria-label="Expand bubble">⤢</button><button class="icon-btn" data-action="hide" title="Hide to tray" aria-label="Hide to tray">−</button></div></header><button class="compact-metrics ${s.settings.showContext === false ? "no-context" : ""}" data-action="dashboard" title="Open detailed usage dashboard"><span><small>Current left</small><strong class="mono">${pct(a?.current)}</strong></span><span><small>Weekly left</small><strong class="mono">${pct(a?.weekly)}</strong></span>${s.settings.showContext !== false ? `<span class="compact-context"><small>Context used</small><b class="mono">${session?.context ? Math.round(session.context.used) + "%" : "—"}</b>${s.settings.showCompactions !== false ? `<em>↻ ${session?.compactions || 0}</em>` : ""}</span>` : ""}</button><footer class="compact-footer">${s.settings.showContext !== false ? `<span class="compact-risk">${spectrum(session || {})}</span>` : ""}<span>${stale ? "stale · " : ""}${[s.settings.showClock !== false ? time(Date.now()) : "", s.settings.showCompactions !== false ? (session?.compactions || 0) + " compactions" : ""].filter(Boolean).join(" · ") || "Shared account allowance"}</span></footer></section>`;
+  return `<section class="compact-bubble"><header class="compact-header"><span class="compact-source"><span class="dot"></span>${esc(a?.client || "Token Tracker")}</span><span class="compact-notice" title="${esc(notice)}">${esc(notice || "Reported")}</span><div class="compact-controls">${quickControls(s)}<button class="icon-btn" data-action="settings" title="Settings" aria-label="Settings">⚙</button><button class="icon-btn" data-mode="expanded" title="Expand bubble" aria-label="Expand bubble">⤢</button><button class="icon-btn" data-action="hide" title="Hide to tray" aria-label="Hide to tray">−</button></div></header><button class="compact-metrics ${s.settings.showContext === false ? "no-context" : ""}" data-action="dashboard" title="Open detailed usage dashboard"><span><small title="${esc(reset(a?.current?.resetsAt))}">Current left</small><strong class="mono">${pct(a?.current)}</strong></span><span><small title="${esc(reset(a?.weekly?.resetsAt))}">Weekly left</small><strong class="mono">${pct(a?.weekly)}</strong></span>${s.settings.showContext !== false ? `<span class="compact-context"><small>Context used</small><b class="mono">${session?.context ? Math.round(session.context.used) + "%" : "—"}</b>${s.settings.showCompactions !== false ? `<em>↻ ${session?.compactions || 0}</em>` : ""}</span>` : ""}</button><footer class="compact-footer">${s.settings.showContext !== false ? `<span class="compact-risk">${spectrum(session || {})}</span>` : ""}<span>${stale ? "stale · " : ""}${[s.settings.showClock !== false ? time(Date.now()) : "", s.settings.showCompactions !== false ? (session?.compactions || 0) + " compactions" : ""].filter(Boolean).join(" · ") || "Shared account allowance"}</span></footer><div class="compact-resets" title="Current reset ${esc(reset(a?.current?.resetsAt))}; weekly reset ${esc(reset(a?.weekly?.resetsAt))}">Reset ${a?.current?.resetsAt ? time(a.current.resetsAt) : "not reported"} · Weekly ${a?.weekly?.resetsAt ? reset(a.weekly.resetsAt) : "not reported"}</div></section>`;
 }
 function settingsView(s) {
   const p = settingsDraft || s.settings;
@@ -218,7 +236,9 @@ function settingsView(s) {
       ([k, l]) =>
         `<label>${l} at % remaining<input class="field" name="${k}" type="number" min="1" max="99" value="${p[k]}"></label>`,
     )
-    .join("")}</div><div class="settings-checks">${[
+    .join(
+      "",
+    )}<label>Alarm volume <output id="volume-value">${Math.round(p.soundVolume * 100)}%</output><input class="field" name="soundVolume" type="range" min="0" max="100" value="${Math.round(p.soundVolume * 100)}"></label></div><div class="settings-checks">${[
     ["pin", "Keep the bubble above other windows"],
     ["showContext", "Show context occupancy and risk scale"],
     ["showCompactions", "Show observed compaction count"],
@@ -232,6 +252,20 @@ function settingsView(s) {
       "Briefly show the strip on observed AI prompt / response activity",
     ],
     ["notifications", "Desktop notifications when allowance is low"],
+    ["notifyOnReset", "Nudge when a scheduled reset time is reached"],
+    [
+      "resetAlarmForAll",
+      "Nudge on every reset, even if allowance was not exhausted",
+    ],
+    [
+      "soundOnExhaustion",
+      "Play an alarm when current or weekly allowance reaches 0%",
+    ],
+    [
+      "soundOnReset",
+      "Play an alarm when reset time arrives / availability is confirmed",
+    ],
+    ["soundOnWarning", "Play a sound for an early low-usage warning"],
   ]
     .map(
       ([k, l]) =>
@@ -239,7 +273,20 @@ function settingsView(s) {
     )
     .join(
       "",
-    )}</div><p class="muted tiny">Pop-ups do not take keyboard focus and return to the tray automatically. Delivery means the adapter supplied the update to the client, not proof the model read it. Codex Desktop currently supports observed activity, not automatic awareness injection.</p><button class="primary" type="submit">Save settings</button><button type="button" id="preview-popup">Preview compact strip</button></form></section>`;
+    )}</div><p class="muted tiny">Pop-ups do not take keyboard focus and return to the tray automatically. Delivery means the adapter supplied the update to the client, not proof the model read it. Codex model updates require reviewed/trusted hooks; connection and client-output receipts are shown separately.</p><button class="primary" type="submit">Save settings</button><button type="button" id="preview-popup">Preview compact strip</button><button type="button" data-action="testSound">Test alarm sound</button></form></section>`;
+}
+function alertPanel(s) {
+  const hook = s.lastCodexHook;
+  return `<section class="panel usage-alerts"><div class="row"><h2>Usage alerts & model connection</h2><span class="tag">${esc(s.codexService?.state || "Local records")}</span></div><p class="muted">Quota refresh: ${s.codexService?.lastRefresh ? age(s.codexService.lastRefresh) : "waiting for account API"}. ${hook ? `Codex hook observed ${age(hook.at)}. Latest client output: ${s.lastCodexDelivery ? age(s.lastCodexDelivery.at) : "not observed"}.` : "Codex model updates: NOT CONNECTED. Monitoring alone does not warn the AI."}</p>${s.lastCodexDelivery?.summary ? `<details><summary>Last awareness text supplied to Codex</summary><p class="note">${esc(s.lastCodexDelivery.summary)}</p></details>` : ""}${s.codexService?.error ? `<p class="error">${esc(s.codexService.error)}. Last reported figures are retained.</p>` : ""}${
+    (s.alerts || [])
+      .slice(0, 4)
+      .map(
+        (a) =>
+          `<div class="alarm-record"><strong>${esc(a.title)}</strong><p>${esc(a.body)}</p><small>${time(a.at)} · Notification: ${esc(a.notification)} · Sound: ${esc(a.soundStatus)}. This is a user alert; model delivery is tracked separately.</small></div>`,
+      )
+      .join("") ||
+    '<p class="muted tiny">No recorded usage warnings yet. Earlier unlogged warnings cannot be claimed retroactively.</p>'
+  }</section>`;
 }
 function accountCard(a) {
   return `<article class="account-card"><div class="row"><h2>${esc(a.client)}</h2><span class="tag">${Date.now() - a.at > 600000 ? "STALE" : "REPORTED"}</span></div><div class="account-meta">Shared account allowance · ${esc(a.bucket)} · ${age(a.at)}</div><div class="quota-pair"><div><div class="name">Current window</div>${quota(a.current, a)}</div><div><div class="name">Weekly</div>${quota(a.weekly, a)}</div></div></article>`;
@@ -255,22 +302,22 @@ function details(s) {
   return `<section class="panel"><div class="row"><h2>${esc(x.project || x.client)}</h2><button data-copy="${esc(x.id)}">Copy AI update</button></div><p class="muted">${esc(x.coverage || "Observed since monitoring began")}. Compactions indicate possible continuity risk, not measured model performance.</p><div class="summary-grid"><div><span>Session identity</span><small>${esc(x.id)}</small></div><div><span>Last-request context occupancy</span>${x.context ? Math.round(x.context.used) + "%" : "Unavailable"}</div></div><label class="muted" for="note-kind">Save a continuation record</label><select class="field" id="note-kind"><option value="checkpoint">Checkpoint</option><option value="background job">Background job</option></select><textarea id="note-body" class="field" placeholder="Verified progress, remaining work, decisions — or job ID, log path, output and continuation instructions."></textarea><button class="primary" id="save-note" ${preview ? "disabled" : ""}>Save locally</button>${notes.map((n) => `<div class="note"><span class="tag">${esc(n.kind)}</span> ${reset(n.at)}<p>${esc(n.body)}</p></div>`).join("")}</section>`;
 }
 function overview(s) {
-  return `<div class="section-heading"><h2>Remaining usage</h2><span class="muted tiny">Account limits are shared. Token counts shown only when reported.</span></div><div class="account-grid">${s.accounts.length ? s.accounts.map(accountCard).join("") : '<div class="panel empty">No account allowance reported yet. Codex connects from local session records. Connect Claude in Integrations.</div>'}</div><div class="section-heading"><h2>Sessions <span class="muted">/ ${s.sessions.length}</span></h2><select id="session-filter"><option value="recent" ${filter === "recent" ? "selected" : ""}>Recently observed</option><option value="all" ${filter === "all" ? "selected" : ""}>All recorded sessions</option></select></div>${sessionsTable(s)}<p class="muted tiny">Green → amber → red: context occupancy and observed compactions. A risk heuristic, not a performance measurement.</p><div class="lower-grid"><section class="panel"><div class="row"><h2>Recent activity</h2><span class="eyebrow">Local history</span></div>${
+  return `<div class="section-heading"><h2>Remaining usage</h2><span class="muted tiny">Account limits are shared. Token counts shown only when reported.</span></div><div class="account-grid">${s.accounts.length ? s.accounts.map(accountCard).join("") : '<div class="panel empty">No account allowance reported yet. Codex connects from local session records. Connect Claude in Integrations.</div>'}</div>${alertPanel(s)}<div class="section-heading"><h2>Sessions <span class="muted">/ ${s.sessions.length}</span></h2><select id="session-filter"><option value="recent" ${filter === "recent" ? "selected" : ""}>Recently observed</option><option value="all" ${filter === "all" ? "selected" : ""}>All recorded sessions</option></select></div>${sessionsTable(s)}<p class="muted tiny">Green → amber → red: context occupancy and observed compactions. A risk heuristic, not a performance measurement.</p><div class="lower-grid"><section class="panel"><div class="row"><h2>Recent activity</h2><span class="eyebrow">Local history</span></div>${
     s.events
       .slice(0, 5)
       .map(
         (e) =>
-          `<div class="timeline"><time class="mono">${time(e.at)}</time><div>${esc(e.label)}<small>${esc(s.sessions.find((x) => x.id === e.sessionId)?.project || "Recorded session")}</small></div></div>`,
+          `<div class="timeline"><time class="mono">${time(e.at)}</time><div>${esc(e.label)}<small>${esc(s.sessions.find((x) => x.id === e.sessionId)?.project || "Account / connection event")}</small></div></div>`,
       )
       .join("") ||
     '<p class="muted">Activity appears when a connected client reports events.</p>'
   }</section>${details(s) || `<section class="panel"><span class="eyebrow">Leave a clean stopping point</span><h2 style="margin-top:12px">Enough room to finish well.</h2><p class="muted">Choose a session to save verified progress or record a download that will continue running.</p><p class="tiny muted">Warnings begin at ${s.settings.alertWarnRemaining}% remaining. Prepare at ${s.settings.alertPrepareRemaining}%; wrap up at ${s.settings.alertWrapRemaining}%. These are planning signals, not guaranteed time remaining.</p><button data-action="copy">Copy current AI update</button></section>`}</div>`;
 }
 function integrations(s) {
-  return `<section class="panel"><h2>Client connections</h2><div class="integration"><div class="row"><h3>Codex</h3><span class="tag">READING LOCAL RECORDS</span></div><p>Current and weekly account allowances, last-request context and task events. Session discovery covers the latest 7 days, up to 100 recently modified files. Earlier compactions may be missing when reading a recent tail.</p><p>Automatic updates into existing Codex Desktop chats are not connected. Copy an awareness update, run the local CLI, or configure the optional read-only MCP tool.</p><button data-action="copy">Copy awareness update</button></div><div class="integration"><div class="row"><h3>Claude Code</h3><span class="tag">${s.claudeInstalled ? "INSTALLED · AWAITING EVENTS" : "NOT INSTALLED"}</span></div><p>Connect the official statusline feed and lifecycle hooks. The existing statusline command is preserved, and settings are backed up. Uses your existing Node installation.</p><p>Prompt and session-start hooks deliver a short update to Claude. Stop and tool events update the monitor; stop hooks do not force another model response. Weekly/current allowance requires the client to supply rate-limit fields.</p><button id="install-claude" ${preview ? "disabled" : ""}>${s.claudeInstalled ? "Remove Claude integration" : "Connect Claude Code"}</button></div><div class="integration"><h3>Data and privacy</h3><p>Metadata stays in this computer’s application-data folder. No provider passwords, API keys or full messages are collected. The observer reads local records; it does not control the other apps.</p><label for="timezone-input">Display timezone</label><input class="field" id="timezone-input" value="${esc(zone())}"><button id="save-timezone">Save timezone</button><p>Automatic startup is off.</p></div></section>`;
+  return `<section class="panel"><h2>Client connections</h2><div class="integration"><div class="row"><h3>Codex account readings</h3><span class="tag">${esc(s.codexService?.state || "Starting")}</span></div><p>Independent account-API refresh every minute, including when a model is idle or out of allowance. Last refresh: ${age(s.codexService?.lastRefresh)}. Local session records supply per-chat context and activity.</p><button data-action="refreshQuota">Refresh usage now</button>${s.unreportedBuckets?.length ? `<p class="muted">The provider also reported metadata-only buckets (${s.unreportedBuckets.map((b) => esc(b.bucket)).join(", ")}). These are not additional accounts and do not contain current/weekly allowance figures, so they do not get usage cards.</p>` : ""}</div><div class="integration"><div class="row"><h3>Codex model updates</h3><span class="tag">${s.lastCodexHook ? "HOOK OBSERVED" : s.codexInstalled ? "TRUST REVIEW NEEDED" : "NOT CONNECTED"}</span></div><p>Quota monitoring and model delivery are separate. Configure the reversible lifecycle hooks, review and trust their exact definitions through Codex /hooks, then resume the chat. Prompt/start updates are supplied every time; tool-event updates are throttled to once per minute or a warning-level change. Stop never forces another model turn.</p><p>${s.lastCodexDelivery ? "Latest client output: " + age(s.lastCodexDelivery.at) : "No Codex model-facing output has been observed yet."}</p><button id="install-codex" ${preview ? "disabled" : ""}>${s.codexInstalled ? "Remove Codex hooks" : "Configure Codex model updates"}</button></div><div class="integration"><div class="row"><h3>Claude Code</h3><span class="tag">${s.claudeInstalled ? "INSTALLED · AWAITING EVENTS" : "NOT INSTALLED"}</span></div><p>Connect the official statusline feed and lifecycle hooks. Existing statusline output is preserved and settings are backed up. Requires Node on PATH.</p><button id="install-claude" ${preview ? "disabled" : ""}>${s.claudeInstalled ? "Remove Claude integration" : "Connect Claude Code"}</button></div><div class="integration"><h3>Data and privacy</h3><p>Only session/usage metadata and your notes are stored locally. Provider credentials and full messages are not collected. The account service uses Codex's existing sign-in without reading credential files.</p><label for="timezone-input">Display timezone</label><input class="field" id="timezone-input" value="${esc(zone())}"><button id="save-timezone">Save timezone</button></div></section>`;
 }
 function dashboard(s) {
-  return `<div class="workspace"><aside class="sidebar"><div class="brand"><span class="mark">◴</span>Token Tracker</div><div class="nav"><button data-view="overview" class="${view === "overview" ? "selected" : ""}">◫ &nbsp; Overview</button><button data-view="integrations" class="${view === "integrations" ? "selected" : ""}">⌁ &nbsp; Integrations</button><button data-view="settings" class="${view === "settings" ? "selected" : ""}">⚙ &nbsp; Settings</button><button data-action="bubble">◴ &nbsp; Show bubble</button></div><div class="sidebar-bottom"><span class="dot"></span>Runs on your computer<br>Monitoring uses no AI tokens.<br><br><span class="tiny">${esc(zone())}<br><span id="clock">${clock()}</span></span></div></aside><main class="main"><header class="pagehead"><div><span class="eyebrow">Your AI working allowance</span><h1>${view === "overview" ? "Room to finish." : view === "settings" ? "Small, and out of your way." : "Connected, on your terms."}</h1><p class="muted">${view === "overview" ? "Plan the work. Know when to save your place." : "Live readings and model updates are separate capabilities."}</p></div><div class="head-actions">${quickControls(s)}<button id="preview-toggle">${preview ? "Return to live data" : "Preview design"}</button><button data-action="hide">Minimise to tray</button></div></header>${preview ? '<div class="notice">DESIGN PREVIEW · These figures are illustrative. No sample usage is written into your live history.</div>' : ""}${s.collector?.errors?.length ? '<div class="notice">Some readings could not refresh. Last observed data is retained and may be stale.</div>' : ""}${view === "overview" ? overview(s) : view === "settings" ? settingsView(s) : integrations(s)}<p class="muted tiny">${preview ? "Illustrative preview" : `Collector ${age(s.collector?.lastScan)} · client-reported values · stale after 10 minutes`}</p></main></div>`;
+  return `<div class="workspace"><aside class="sidebar"><div class="brand"><span class="mark">◴</span>Token Tracker</div><div class="nav"><button data-view="overview" class="${view === "overview" ? "selected" : ""}">◫ &nbsp; Overview</button><button data-view="integrations" class="${view === "integrations" ? "selected" : ""}">⌁ &nbsp; Integrations</button><button data-view="settings" class="${view === "settings" ? "selected" : ""}">⚙ &nbsp; Settings</button><button data-action="bubble">◴ &nbsp; Show bubble</button></div><div class="sidebar-bottom"><span class="dot"></span>Runs on your computer<br>Monitoring uses no AI tokens.<br><br><span class="tiny">${esc(zone())}<br><span id="clock">${clock()}</span></span></div></aside><main class="main"><header class="pagehead"><div><span class="eyebrow">Your AI working allowance</span><h1>${view === "overview" ? "Room to finish." : view === "settings" ? "Small, and out of your way." : "Connected, on your terms."}</h1><p class="muted">${view === "overview" ? "Plan the work. Know when to save your place." : "Live readings and model updates are separate capabilities."}</p></div><div class="head-actions">${quickControls(s)}<button data-action="refreshQuota">Refresh usage</button><button data-action="hide">Minimise to tray</button></div></header>${preview ? '<div class="notice">DESIGN PREVIEW · These figures are illustrative. No sample usage is written into your live history.</div>' : ""}${s.collector?.errors?.length ? '<div class="notice">Some readings could not refresh. Last observed data is retained and may be stale.</div>' : ""}${view === "overview" ? overview(s) : view === "settings" ? settingsView(s) : integrations(s)}<p class="muted tiny">${preview ? "Illustrative preview" : `Collector ${age(s.collector?.lastScan)} · client-reported values · stale after 10 minutes`}</p></main></div>`;
 }
 function toast(text) {
   const el = document.querySelector("#toast");
@@ -294,6 +341,7 @@ function readPreferencesForm(form) {
     visibilityMode: form.elements.visibilityMode.value,
     compactWidth: Number(form.elements.compactWidth.value),
     compactScale: Number(form.elements.compactScale.value) / 100,
+    soundVolume: Number(form.elements.soundVolume.value) / 100,
     opacity: Number(form.elements.opacity.value) / 100,
     popupSeconds: Number(form.elements.popupSeconds.value),
     timezone: form.elements.timezone.value,
@@ -314,6 +362,11 @@ function readPreferencesForm(form) {
     "showContext",
     "showCompactions",
     "showClock",
+    "notifyOnReset",
+    "resetAlarmForAll",
+    "soundOnReset",
+    "soundOnExhaustion",
+    "soundOnWarning",
   ])
     p[k] = form.elements[k].checked;
   return p;
@@ -448,6 +501,14 @@ function render() {
         render();
       }
     };
+  const codexInstall = document.querySelector("#install-codex");
+  if (codexInstall)
+    codexInstall.onclick = async () => {
+      codexInstall.disabled = true;
+      await act(s.codexInstalled ? "removeCodex" : "installCodex");
+      live = await window.tracker.request("snapshot");
+      render();
+    };
   const install = document.querySelector("#install-claude");
   if (install)
     install.onclick = async () => {
@@ -462,6 +523,9 @@ function render() {
       settingsDraft = readPreferencesForm(form);
     };
     form.onchange = form.oninput;
+    form.elements.soundVolume.oninput = () =>
+      (document.querySelector("#volume-value").textContent =
+        form.elements.soundVolume.value + "%");
     form.elements.compactScale.oninput = () =>
       (document.querySelector("#scale-value").textContent =
         form.elements.compactScale.value + "%");
@@ -513,3 +577,42 @@ setInterval(() => {
   const c = document.querySelector("#clock");
   if (c) c.textContent = clock();
 }, 30000);
+
+window.tracker.onAlarm(async (alert) => {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    await ctx.resume();
+    if (ctx.state !== "running") throw Error("Audio unavailable");
+    const notes =
+      alert.kind === "exhausted" ? [660, 440, 220] : [660, 880, 1174];
+    await new Promise((resolve) => {
+      notes.forEach((frequency, i) => {
+        const osc = ctx.createOscillator(),
+          gain = ctx.createGain(),
+          at = ctx.currentTime + i * 0.25;
+        osc.frequency.value = frequency;
+        gain.gain.setValueAtTime(0, at);
+        gain.gain.linearRampToValueAtTime(
+          Math.min(1, Math.max(0, alert.volume ?? 0.6)) * 0.2,
+          at + 0.02,
+        );
+        gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(at);
+        osc.stop(at + 0.24);
+        if (i === notes.length - 1) osc.onended = resolve;
+      });
+    });
+    await ctx.close();
+    await window.tracker.request("soundResult", {
+      id: alert.id,
+      status: "completed",
+    });
+  } catch {
+    await window.tracker.request("soundResult", {
+      id: alert.id,
+      status: "failed",
+    });
+  }
+});

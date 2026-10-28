@@ -9,6 +9,7 @@ const {
   Notification,
   clipboard,
   nativeTheme,
+  shell,
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
@@ -16,10 +17,19 @@ const { Store } = require("./store.cjs");
 const { Collector } = require("./collector.cjs");
 const { startBridge, request } = require("./bridge.cjs");
 const { briefing } = require("./core.cjs");
-const { installClaude, uninstallClaude } = require("./installer.cjs");
+const {
+  installClaude,
+  uninstallClaude,
+  installCodex,
+  uninstallCodex,
+} = require("./installer.cjs");
 const { bubbleSize, DEFAULTS } = require("./preferences.cjs");
 const { BubbleController } = require("./bubble.cjs");
+const { AlertEngine } = require("./alerts.cjs");
+const { CodexService } = require("./codex-service.cjs");
 app.setName("Token Tracker");
+if (process.platform === "win32")
+  app.setAppUserModelId("local.tokentracker.desktop");
 const capture = process.argv.includes("--capture");
 const smoke = process.argv.includes("--smoke");
 const runtimeRoot = path.join(
@@ -41,11 +51,11 @@ let store,
   dashboard,
   timer,
   quitting = false;
+let alertEngine, codexService, quotaTimer;
 let bubbleControl,
   lastPopup = null,
   activityBaseline = false;
 const seenActivity = new Set();
-const notified = new Set();
 const ui = path.join(__dirname, "..", "ui", "index.html");
 function windowOptions(extra) {
   return {
@@ -55,6 +65,7 @@ function windowOptions(extra) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      autoplayPolicy: "no-user-gesture-required",
       webSecurity: true,
     },
     ...extra,
@@ -102,7 +113,13 @@ function showDashboard(section = "overview") {
       e.preventDefault();
       dashboard.hide();
     });
-    dashboard.loadFile(ui, { query: { view: "dashboard", section } });
+    dashboard.loadFile(ui, {
+      query: {
+        view: "dashboard",
+        section,
+        ...(capture ? { preview: "1" } : {}),
+      },
+    });
     dashboard.once("ready-to-show", () => dashboard.show());
   } else {
     dashboard.show();
@@ -117,6 +134,7 @@ function snapshot() {
     ...s,
     collector: { lastScan: collector.lastScan, errors: collector.errors },
     claudeInstalled: !!store.get("settings", "claudeInstalled"),
+    codexInstalled: !!store.get("settings", "codexInstalled"),
     effectiveTheme:
       s.settings.theme === "system"
         ? nativeTheme.shouldUseDarkColors
@@ -128,6 +146,11 @@ function snapshot() {
       temporary: !!bubbleControl?.temporary,
     },
     lastPopup,
+    developerPreview: capture,
+    codexService: codexService?.status || {
+      state: "starting",
+      lastRefresh: null,
+    },
   };
 }
 function broadcast() {
@@ -217,35 +240,62 @@ async function tick() {
     for (const e of snap.events) seenActivity.add(e.id);
   }
   broadcast();
-  if (!capture && !smoke && snap.settings.notifications) {
-    for (const a of snap.accounts)
-      for (const [name, w] of [
-        ["current", a.current],
-        ["weekly", a.weekly],
-      ]) {
-        if (
-          !w ||
-          w.remaining > snap.settings.alertPrepareRemaining ||
-          w.state !== "reported" ||
-          Date.now() - a.at > 600000
-        )
-          continue;
-        const level =
-          w.remaining <= snap.settings.alertWrapRemaining ? "wrap" : "prepare";
-        const key = a.id + name + w.resetsAt + level;
-        if (!notified.has(key)) {
-          notified.add(key);
-          if (Notification.isSupported())
-            new Notification({
-              title: `${a.client}: ${w.remaining}% ${name} allowance left`,
-              body:
-                level === "wrap"
-                  ? "Finish verification and save a continuation checkpoint."
-                  : "Prepare a stopping point before starting large work.",
-            }).show();
-        }
-      }
+  evaluateAlerts();
+}
+function evaluateAlerts() {
+  if (!alertEngine) return;
+  const alerts = alertEngine.evaluate();
+  for (const alert of alerts) {
+    if (capture || smoke) {
+      store.updateAlert(alert.id, {
+        notification: "test mode",
+        soundStatus: "test mode",
+      });
+      continue;
+    }
+    if (store.snapshot().settings.notifications && Notification.isSupported()) {
+      const notification = new Notification({
+        title: alert.title,
+        body: alert.body,
+      });
+      store.updateAlert(alert.id, { notification: "requested" });
+      notification.on("show", () => {
+        store.updateAlert(alert.id, { notification: "shown by OS" });
+        broadcast();
+      });
+      notification.on("failed", () => {
+        store.updateAlert(alert.id, { notification: "failed" });
+        broadcast();
+      });
+      notification.show();
+    } else
+      store.updateAlert(alert.id, { notification: "disabled or unavailable" });
+    if (alert.sound) sendSound(alert);
+    lastPopup = {
+      at: Date.now(),
+      client: alert.client,
+      label:
+        alert.kind === "reset-due"
+          ? "Reset time reached"
+          : alert.kind === "available"
+            ? "Usage available"
+            : alert.title,
+    };
+    bubbleControl?.delivery("activity");
   }
+  if (alerts.length) broadcast();
+}
+function sendSound(alert) {
+  if (!bubble || bubble.isDestroyed()) {
+    store.updateAlert(alert.id, {
+      soundStatus: "failed: audio window unavailable",
+    });
+    return;
+  }
+  const send = () => bubble.webContents.send("tracker:alarm", alert);
+  if (bubble.webContents.isLoading())
+    bubble.webContents.once("did-finish-load", send);
+  else send();
 }
 app
   .whenReady()
@@ -253,6 +303,38 @@ app
     const home = app.getPath("userData");
     await fs.mkdir(home, { recursive: true });
     store = new Store(path.join(home, "tracker.sqlite"));
+    if (app.isPackaged && process.platform === "win32" && !capture && !smoke) {
+      try {
+        const shortcut = path.join(
+          app.getPath("appData"),
+          "Microsoft",
+          "Windows",
+          "Start Menu",
+          "Programs",
+          "Token Tracker (local companion).lnk",
+        );
+        let exists = false;
+        try {
+          await fs.access(shortcut);
+          exists = true;
+        } catch {}
+        if (!exists) {
+          const ok = shell.writeShortcutLink(shortcut, "create", {
+            target: process.execPath,
+            cwd: path.dirname(process.execPath),
+            appUserModelId: "local.tokentracker.desktop",
+            description: "Local AI usage and reset alarms",
+          });
+          store.put(
+            "settings",
+            "notificationShortcut",
+            ok ? "created" : "unavailable",
+          );
+        } else store.put("settings", "notificationShortcut", "existing");
+      } catch {
+        store.put("settings", "notificationShortcut", "unavailable");
+      }
+    }
     if (capture || smoke)
       store.updatePreferences({
         ...DEFAULTS,
@@ -268,6 +350,13 @@ app
         visibilityMode: "always",
       });
     collector = new Collector(store);
+    alertEngine = new AlertEngine(store);
+    codexService = new CodexService(store, {
+      changed: () => {
+        evaluateAlerts();
+        broadcast();
+      },
+    });
     bridge = await startBridge(store, home, (delivery) => {
       lastPopup = {
         at: delivery.at,
@@ -324,6 +413,38 @@ app
       if (![bubble, dashboard].some((w) => w && w.webContents === event.sender))
         throw Error("Untrusted sender");
       if (action === "snapshot") return snapshot();
+      if (action === "refreshQuota") {
+        await codexService.refresh();
+        evaluateAlerts();
+        broadcast();
+        return codexService.status;
+      }
+      if (action === "soundResult") {
+        if (
+          !payload ||
+          !["completed", "failed"].includes(payload.status) ||
+          typeof payload.id !== "string"
+        )
+          throw Error("Invalid sound result");
+        store.updateAlert(payload.id, { soundStatus: payload.status });
+        broadcast();
+        return true;
+      }
+      if (action === "testSound") {
+        const alert = {
+          id: "sound-test:" + Date.now(),
+          at: Date.now(),
+          kind: "test",
+          title: "Alarm sound test",
+          body: "User-requested local alarm test.",
+          volume: store.snapshot().settings.soundVolume,
+          soundStatus: "pending",
+          notification: "not requested",
+        };
+        store.recordAlert(alert);
+        sendSound(alert);
+        return "Playing test sound";
+      }
       if (action === "hide") {
         const win = BrowserWindow.fromWebContents(event.sender);
         if (win === bubble) bubbleControl.hide();
@@ -412,6 +533,33 @@ app
         store.put("settings", "claudeInstalled", true);
         return result.message;
       }
+      if (action === "installCodex") {
+        const cli = path.join(home, "bridge", "cli.cjs");
+        await fs.mkdir(path.dirname(cli), { recursive: true });
+        await fs.copyFile(
+          app.isPackaged
+            ? path.join(process.resourcesPath, "bridge", "cli.cjs")
+            : path.join(__dirname, "cli.cjs"),
+          cli,
+        );
+        const result = await installCodex(home, cli);
+        store.put("settings", "codexInstalled", true);
+        store.recordAlert({
+          id: "codex-hooks-configured:" + Date.now(),
+          at: Date.now(),
+          kind: "connection",
+          title: "Codex hooks configured — trust review required",
+          body: result.message,
+          notification: "not requested",
+          soundStatus: "disabled",
+        });
+        return result.message;
+      }
+      if (action === "removeCodex") {
+        const result = await uninstallCodex(home);
+        store.put("settings", "codexInstalled", false);
+        return result.message;
+      }
       if (action === "removeClaude") {
         const result = await uninstallClaude(home);
         store.put("settings", "claudeInstalled", false);
@@ -420,6 +568,10 @@ app
       throw Error("Unsupported action");
     });
     await tick();
+    if (!capture && !smoke) {
+      codexService.refresh();
+      quotaTimer = setInterval(() => codexService.refresh(), 60000);
+    }
     timer = setInterval(
       () =>
         tick().catch(() => {
@@ -500,10 +652,6 @@ app
         dashboard.webContents.once("did-finish-load", r),
       );
       await new Promise((r) => setTimeout(r, 300));
-      if (capture)
-        await dashboard.webContents.executeJavaScript(
-          'document.querySelector("#preview-toggle").click()',
-        );
       await new Promise((r) => setTimeout(r, 200));
       await fs.writeFile(
         path.join(out, capture ? "dashboard-design.png" : "dashboard-live.png"),
@@ -562,6 +710,41 @@ app
       result.visibilityControls = await bubble.webContents.executeJavaScript(
         '!document.querySelector(".compact-context") && !document.querySelector(".compact-risk")',
       );
+      const soundTest = {
+        id: "silent-native-audio-test:" + Date.now(),
+        at: Date.now(),
+        kind: "test",
+        title: "Silent automated audio transport test",
+        body: "Volume zero: this verifies playback scheduling and receipt, not audible speakers.",
+        volume: 0,
+        soundStatus: "pending",
+        notification: "test mode",
+      };
+      store.recordAlert(soundTest);
+      sendSound(soundTest);
+      for (let i = 0; i < 20; i++) {
+        if (
+          store.snapshot().alerts.find((a) => a.id === soundTest.id)
+            ?.soundStatus !== "pending"
+        )
+          break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      result.audioReceipt = store
+        .snapshot()
+        .alerts.find((a) => a.id === soundTest.id)?.soundStatus;
+      await dashboard.loadFile(ui, {
+        query: { view: "dashboard", preview: "1", scenario: "exhausted" },
+      });
+      await new Promise((r) => setTimeout(r, 250));
+      result.exhaustedUI = await dashboard.webContents.executeJavaScript(
+        '({cards:document.querySelectorAll(".account-card").length,figures:[...document.querySelectorAll(".account-card .quota-number")].map(e=>e.textContent),previewButton:!!document.querySelector("#preview-toggle")})',
+      );
+      if (capture)
+        await fs.writeFile(
+          path.join(out, "quota-exhausted-regression.png"),
+          (await dashboard.webContents.capturePage()).toPNG(),
+        );
       if (
         !result.tray ||
         !result.closeHides ||
@@ -579,6 +762,11 @@ app
         !result.quickOpacity ||
         !result.quickPin ||
         !result.visibilityControls ||
+        result.audioReceipt !== "completed" ||
+        result.exhaustedUI.cards !== 1 ||
+        !result.exhaustedUI.figures[0].includes("0%") ||
+        !result.exhaustedUI.figures[1].includes("84%") ||
+        result.exhaustedUI.previewButton ||
         result.lightTheme !== "light" ||
         Math.abs(result.nativeOpacity - 0.65) > 0.02
       )
@@ -605,6 +793,8 @@ app.on("window-all-closed", () => {});
 app.on("before-quit", () => {
   quitting = true;
   clearInterval(timer);
+  clearInterval(quotaTimer);
+  codexService?.close();
 });
 app.on("will-quit", () => {
   tray?.destroy();

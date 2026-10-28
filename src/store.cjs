@@ -10,7 +10,8 @@ class Store {
       CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,session_id TEXT,at INTEGER,label TEXT);
       CREATE TABLE IF NOT EXISTS files(id TEXT PRIMARY KEY,data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS settings(id TEXT PRIMARY KEY,data TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS notes(id INTEGER PRIMARY KEY,session_id TEXT,at INTEGER,kind TEXT,body TEXT);`);
+      CREATE TABLE IF NOT EXISTS notes(id INTEGER PRIMARY KEY,session_id TEXT,at INTEGER,kind TEXT,body TEXT);
+      CREATE TABLE IF NOT EXISTS alerts(id TEXT PRIMARY KEY,at INTEGER,data TEXT);`);
   }
   get(table, id) {
     return JSON.parse(
@@ -48,9 +49,7 @@ class Store {
       }
       this.put("sessions", next.id, next);
       if (x.account) {
-        const a = this.get("accounts", x.account.id);
-        if (!a || x.account.at >= a.at)
-          this.put("accounts", x.account.id, x.account);
+        this.upsertAccount(x.account);
       }
       this.db
         .prepare("INSERT INTO events VALUES (?,?,?,?)")
@@ -64,10 +63,28 @@ class Store {
   }
   snapshot() {
     const now = Date.now();
+    const allAccounts = this.db
+      .prepare("SELECT data FROM accounts")
+      .all()
+      .map((r) => JSON.parse(r.data));
     return {
       at: now,
-      accounts: this.db
-        .prepare("SELECT data FROM accounts")
+      accounts: allAccounts
+        .filter((a) => a.current || a.weekly)
+        .map((a) => ({
+          ...a,
+          current: a.current
+            ? { ...a.current, reportedAt: a.current.reportedAt || a.at }
+            : null,
+          weekly: a.weekly
+            ? { ...a.weekly, reportedAt: a.weekly.reportedAt || a.at }
+            : null,
+        })),
+      unreportedBuckets: allAccounts
+        .filter((a) => !a.current && !a.weekly)
+        .map((a) => ({ client: a.client, bucket: a.bucket, at: a.at })),
+      alerts: this.db
+        .prepare("SELECT data FROM alerts ORDER BY at DESC LIMIT 80")
         .all()
         .map((r) => JSON.parse(r.data)),
       sessions: this.db
@@ -92,6 +109,8 @@ class Store {
         .all(),
       settings: { ...DEFAULTS, ...(this.get("settings", "preferences") || {}) },
       lastDelivery: this.get("settings", "lastDelivery"),
+      lastCodexHook: this.get("settings", "lastCodexHook"),
+      lastCodexDelivery: this.get("settings", "lastCodexDelivery"),
       integrations: {
         codex: {
           observe: "Local session records",
@@ -119,6 +138,41 @@ class Store {
       .prepare("INSERT INTO notes(session_id,at,kind,body) VALUES(?,?,?,?)")
       .run(sessionId, Date.now(), kind, body.trim());
   }
+  upsertAccount(next) {
+    const old = this.get("accounts", next.id);
+    const merged = { ...(old || {}), ...next };
+    for (const scope of ["current", "weekly"]) {
+      const incoming = next[scope],
+        previous = old?.[scope];
+      merged[scope] =
+        incoming &&
+        (!previous ||
+          (incoming.reportedAt || next.at) >= (previous.reportedAt || old.at))
+          ? { ...incoming, reportedAt: incoming.reportedAt || next.at }
+          : previous || null;
+    }
+    merged.at = Math.max(old?.at || 0, next.at || 0);
+    this.put("accounts", next.id, merged);
+    return merged;
+  }
+  recordAlert(alert) {
+    if (this.db.prepare("SELECT id FROM alerts WHERE id=?").get(alert.id))
+      return false;
+    this.db
+      .prepare("INSERT INTO alerts VALUES(?,?,?)")
+      .run(alert.id, alert.at, JSON.stringify(alert));
+    this.db
+      .prepare("INSERT OR IGNORE INTO events VALUES(?,?,?,?)")
+      .run("alert:" + alert.id, alert.sessionId || "", alert.at, alert.title);
+    return true;
+  }
+  updateAlert(id, patch) {
+    const r = this.db.prepare("SELECT data FROM alerts WHERE id=?").get(id);
+    if (!r) return;
+    this.db
+      .prepare("UPDATE alerts SET data=? WHERE id=?")
+      .run(JSON.stringify({ ...JSON.parse(r.data), ...patch }), id);
+  }
   updatePreferences(patch) {
     const next = { ...this.snapshot().settings, ...validatePreferences(patch) };
     if (!(
@@ -137,8 +191,11 @@ class Store {
       at: Date.now(),
       client: ticket.client,
       sessionId: ticket.sessionId || "",
+      summary: ticket.summary || null,
     };
     this.put("settings", "lastDelivery", delivery);
+    if (ticket.client === "Codex")
+      this.put("settings", "lastCodexDelivery", delivery);
     this.db
       .prepare("INSERT OR IGNORE INTO events VALUES(?,?,?,?)")
       .run(

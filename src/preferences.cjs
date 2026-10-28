@@ -20,6 +20,12 @@ const DEFAULTS = Object.freeze({
   alertWarnRemaining: 30,
   alertPrepareRemaining: 15,
   alertWrapRemaining: 8,
+  notifyOnReset: true,
+  resetAlarmForAll: false,
+  soundOnReset: false,
+  soundOnExhaustion: false,
+  soundOnWarning: false,
+  soundVolume: 0.6,
 });
 function validatePreferences(patch) {
   if (!patch || typeof patch !== "object" || Array.isArray(patch))
@@ -37,6 +43,11 @@ function validatePreferences(patch) {
         "showContext",
         "showCompactions",
         "showClock",
+        "notifyOnReset",
+        "resetAlarmForAll",
+        "soundOnReset",
+        "soundOnExhaustion",
+        "soundOnWarning",
       ].includes(k)
     ) {
       if (typeof v !== "boolean") throw Error(k + " must be a boolean");
@@ -54,6 +65,7 @@ function validatePreferences(patch) {
       opacity: [0.35, 1],
       compactWidth: [240, 380],
       compactScale: [0.8, 1.4],
+      soundVolume: [0, 1],
       popupSeconds: [2, 15],
       sessionRows: [1, 5],
       alertWarnRemaining: [1, 99],

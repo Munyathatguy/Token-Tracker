@@ -8,8 +8,13 @@ const actions = new Set([
   "copy",
   "note",
   "installClaude",
+  "installCodex",
+  "removeCodex",
   "removeClaude",
   "timezone",
+  "refreshQuota",
+  "soundResult",
+  "testSound",
   "preferences",
   "quickPreferences",
   "settings",
@@ -17,6 +22,11 @@ const actions = new Set([
   "previewPopup",
 ]);
 contextBridge.exposeInMainWorld("tracker", {
+  onAlarm: (callback) => {
+    const listener = (_event, alert) => callback(alert);
+    ipcRenderer.on("tracker:alarm", listener);
+    return () => ipcRenderer.removeListener("tracker:alarm", listener);
+  },
   request: (action, payload) => {
     if (!actions.has(action))
       return Promise.reject(Error("Unsupported action"));

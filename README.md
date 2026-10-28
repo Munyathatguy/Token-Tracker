@@ -12,14 +12,16 @@ The default bubble is now a **compact 260 × 96 strip**, with larger remaining-u
 
 ## What works in this version
 
-- **Codex observation:** reads local session records for reported account allowances/reset times, latest-request context, model and task activity. No provider credentials are read.
+- **Codex quota refresh:** independently queries the signed-in Codex account API every minute, even while the model is idle. Local records supply session context/activity. No provider credentials are read.
 - **Independent collection:** no AI tokens used for monitoring, persistence, the clock, alerts or display.
 - **Quota-first interface:** current-window and weekly percentages; accounts shared across chats remain separate from per-session context.
 - **Desktop lifecycle:** movable/pinned bubble, close/minimise to tray, tray restore, separate dashboard and explicit Quit.
 - **Context awareness:** occupancy, observed compactions and an explained continuity-risk scale. This is not a measured performance score.
 - **Local history:** SQLite metadata, incremental log cursors and duplicate-event protection; checkpoints and background-job notes.
 - **Claude integration:** optional reversible statusline + lifecycle-hook installer. Preserves the existing statusline and backs up settings. Requires Node on PATH.
-- **Model access:** local CLI, copyable briefings and an optional read-only MCP tool. Claude prompt/start hooks inject brief awareness updates when installed.
+- **Model access:** local CLI, copyable briefings and an optional read-only MCP tool. Trusted Codex lifecycle hooks and optional Claude prompt/start hooks inject brief awareness updates.
+- **Correct exhausted-state display:** current 0% and weekly remaining allowance stay independent. Empty metadata buckets do not produce duplicate usage cards. Stale figures are retained and labelled.
+- **Usage/reset alarms:** persisted warning/exhaustion/reset/availability history, configurable sounds and volume, and a speaker-test button. See [quota and alerts](docs/QUOTA-AND-ALERTS.md).
 
 ## Important capability boundaries
 
@@ -29,14 +31,14 @@ This is an early working desktop application, not a universal guarantee against 
 |---|---|
 | Codex Desktop local usage observation | Connected and tested against local records |
 | Current and weekly token counts | Providers may report only percentages; exact remaining tokens are unavailable when not supplied |
-| Automatic injection into existing Codex Desktop chats | Not connected; CLI/copy/optional MCP available |
+| Automatic Codex awareness | Live hook delivery verified in the owner development chat; each installation must trust the exact definitions |
 | Claude statusline and prompt/start delivery | Implemented; synthetic integration tested, owner installation/live acceptance still required |
 | Claude stop/tool completion events | Observed by hooks; do not force another model turn |
 | Fully automatic verified handoff | Not implemented; save manual checkpoints/job records or have the AI use the briefing |
 | Time-to-exhaustion forecast | Not shown; reliable allowance history and calibration needed |
 | Other AI clients | Adapter work required |
 
-Codex discovery reads up to 100 recently modified session files in the last seven calendar days. An old session outside that discovery range is not automatically followed. Initial reads use recent tails for large files, so counts are explicitly **observed compactions**, potentially incomplete. Stale readings are labelled after 10 minutes; expired windows await a fresh reading rather than assuming a refill.
+Codex session discovery reads up to 100 recently modified files in the last seven calendar days. Older sessions outside that range are not automatically followed. Initial reads use recent tails, so compaction counts are **observed**, potentially incomplete. Account quotas also refresh independently through the Codex executable on PATH (`TOKEN_TRACKER_CODEX_BINARY` can select an explicit executable). Last known figures remain visible when stale or a reset is due, with clear labels; the app never assumes a refill.
 
 ## Run from source
 
@@ -64,6 +66,12 @@ The local build is unsigned. No binary release or installer is published by this
 Open Dashboard → Integrations → **Connect Claude Code**. This deliberately changes your Claude settings only after that action. Restart Claude Code. The companion must be running for delivery.
 
 The integration records metadata on prompt, tool, compaction and completion events. On prompt/session start it returns a short awareness update using `additionalContext`. Stop events are recorded without returning feedback that could restart the model. Existing statusline output is preserved. Remove the integration with the same button; unrelated settings edits are retained.
+
+## Connect Codex model updates
+
+Dashboard → Integrations → Configure Codex model updates. Review and trust the exact definitions through Codex `/hooks`, then resume the chat. The dashboard shows hook observations and the last client-output receipt separately from quota observation. The helper is stored under `%APPDATA%\TokenTracker\bridge\`. No trust bypass is used. Until reviewed hooks actually run, automatic model warnings are not verified.
+
+Normal dashboards contain only real readings. Design fixtures are available exclusively through explicit developer capture routes, not a user-facing preview toggle.
 
 ## CLI and optional MCP
 

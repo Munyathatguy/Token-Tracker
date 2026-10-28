@@ -12,6 +12,7 @@ function quotaWindow(raw, now = Date.now()) {
     resetsAt,
     state: resetsAt && resetsAt <= now ? "awaiting refresh" : "reported",
     exactRemainingTokens: null,
+    reportedAt: now,
   };
 }
 function contextInfo(info) {
@@ -105,8 +106,8 @@ function normaliseCodex(
             client: "Codex",
             owner: account,
             bucket: r.limit_id || "codex",
-            current: quotaWindow(r.primary, now),
-            weekly: quotaWindow(r.secondary, now),
+            current: quotaWindow(r.primary, at),
+            weekly: quotaWindow(r.secondary, at),
             at,
           }
         : null,
@@ -231,10 +232,9 @@ function briefing(snapshot, id, now = Date.now()) {
 }
 function describe(w, at, now, timezone) {
   if (!w) return "unavailable";
-  if (w.state !== "reported" || (w.resetsAt && w.resetsAt <= now))
-    return "awaiting refreshed reading";
-  if (now - at > 600000) return `${w.remaining}% last reported (stale)`;
-  return `${w.remaining}% remaining${w.resetsAt ? ", resets " + new Date(w.resetsAt).toLocaleString(undefined, { timeZone: timezone }) : ""}`;
+  const due = w.resetsAt && w.resetsAt <= now;
+  const stale = now - (w.reportedAt || at) > 600000;
+  return `${w.remaining}% ${due || stale ? "last reported remaining" : "remaining"}${w.resetsAt ? ", scheduled reset " + new Date(w.resetsAt).toLocaleString(undefined, { timeZone: timezone }) : ", reset not reported"}${due ? " (reset time reached; awaiting confirmation)" : stale ? " (stale)" : ""}`;
 }
 module.exports = {
   quotaWindow,

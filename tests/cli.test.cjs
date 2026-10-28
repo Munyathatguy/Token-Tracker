@@ -73,3 +73,74 @@ test("real CLI prompt hook delivers awareness, stop observes without a model loo
     await fs.rm(home, { recursive: true, force: true });
   }
 });
+test("Codex hooks provide a real briefing and receipt; stop does not request continuation", async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "tracker-codex-cli-"));
+  const s = new Store(":memory:");
+  const b = await startBridge(s, home);
+  try {
+    const now = Date.now();
+    s.upsertAccount({
+      id: "codex:test-owner:codex",
+      client: "Codex",
+      owner: "test-owner",
+      bucket: "codex",
+      at: now,
+      current: {
+        remaining: 7,
+        state: "reported",
+        reportedAt: now,
+        resetsAt: now + 60000,
+      },
+      weekly: {
+        remaining: 84,
+        state: "reported",
+        reportedAt: now,
+        resetsAt: now + 86400000,
+      },
+    });
+    s.apply(
+      {
+        session: {
+          id: "codex:codex-test",
+          nativeId: "codex-test",
+          client: "Codex",
+          account: "test-owner",
+        },
+        at: now,
+      },
+      "seed",
+    );
+    const out = JSON.parse(
+      await cli(
+        home,
+        "codex-hook",
+        JSON.stringify({
+          session_id: "codex-test",
+          hook_event_name: "UserPromptSubmit",
+        }),
+      ),
+    );
+    assert.match(
+      out.hookSpecificOutput.additionalContext,
+      /current 7% remaining.*weekly 84% remaining/,
+    );
+    assert.match(
+      out.hookSpecificOutput.additionalContext,
+      /Capacity is low: finish verification and save a checkpoint/,
+    );
+    assert.equal(s.snapshot().lastCodexDelivery.client, "Codex");
+    assert.ok(s.snapshot().lastCodexHook);
+    const stop = JSON.parse(
+      await cli(
+        home,
+        "codex-hook",
+        JSON.stringify({ session_id: "codex-test", hook_event_name: "Stop" }),
+      ),
+    );
+    assert.deepEqual(stop, {});
+  } finally {
+    await b.close();
+    s.close();
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});

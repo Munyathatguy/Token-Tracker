@@ -89,4 +89,89 @@ async function uninstallClaude(home) {
     message: "Integration removed; unrelated Claude settings preserved.",
   };
 }
-module.exports = { installClaude, uninstallClaude };
+async function installCodex(
+  home,
+  cliPath,
+  hooksPath = path.join(os.homedir(), ".codex", "hooks.json"),
+) {
+  let settings = {};
+  try {
+    settings = JSON.parse(await fs.readFile(hooksPath, "utf8"));
+  } catch (e) {
+    if (e.code !== "ENOENT")
+      throw Error("Codex hooks could not be parsed; left untouched");
+  }
+  const marker = path.join(home, "codex-integration.json");
+  if (
+    Object.values(settings.hooks || {}).some((groups) =>
+      groups.some((g) => g.hooks?.some((h) => h.command?.includes(cliPath))),
+    )
+  )
+    return {
+      message:
+        "Codex hooks already configured; review /hooks in Codex if not trusted.",
+    };
+  await fs.mkdir(path.dirname(hooksPath), { recursive: true });
+  await fs.mkdir(home, { recursive: true });
+  const backup = hooksPath + ".token-tracker-backup-" + Date.now();
+  await fs.writeFile(backup, JSON.stringify(settings, null, 2), {
+    mode: 0o600,
+  });
+  settings.hooks = settings.hooks || {};
+  for (const event of [
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "Stop",
+  ])
+    settings.hooks[event] = [
+      ...(settings.hooks[event] || []),
+      {
+        hooks: [
+          {
+            type: "command",
+            command: 'node "' + cliPath + '" codex-hook',
+            timeout: 5,
+            ...(event !== "Stop" ? { additionalContextLimit: 1500 } : {}),
+          },
+        ],
+      },
+    ];
+  await fs.writeFile(marker, JSON.stringify({ hooksPath, backup, cliPath }), {
+    mode: 0o600,
+  });
+  const tmp = hooksPath + ".token-tracker-tmp";
+  await fs.writeFile(tmp, JSON.stringify(settings, null, 2), { mode: 0o600 });
+  await fs.rename(tmp, hooksPath);
+  return {
+    message:
+      "Codex hooks configured. Review and trust the exact definitions in Codex /hooks, then resume/restart the chat. Configured does not mean delivered.",
+    backup,
+  };
+}
+async function uninstallCodex(home) {
+  const marker = path.join(home, "codex-integration.json"),
+    cfg = JSON.parse(await fs.readFile(marker, "utf8"));
+  const settings = JSON.parse(await fs.readFile(cfg.hooksPath, "utf8"));
+  for (const [event, groups] of Object.entries(settings.hooks || {}))
+    settings.hooks[event] = groups
+      .map((g) => ({
+        ...g,
+        hooks: (g.hooks || []).filter((h) => !h.command?.includes(cfg.cliPath)),
+      }))
+      .filter((g) => g.hooks.length);
+  const tmp = cfg.hooksPath + ".token-tracker-tmp";
+  await fs.writeFile(tmp, JSON.stringify(settings, null, 2));
+  await fs.rename(tmp, cfg.hooksPath);
+  await fs.rm(marker);
+  return {
+    message: "Token Tracker Codex hooks removed; unrelated hooks preserved.",
+  };
+}
+module.exports = {
+  installClaude,
+  uninstallClaude,
+  installCodex,
+  uninstallCodex,
+};

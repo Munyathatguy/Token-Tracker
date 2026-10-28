@@ -1,0 +1,46 @@
+{
+  "name": "token-tracker",
+  "version": "0.1.0",
+  "description": "Remaining usage awareness and clean handoffs for AI sessions",
+  "private": true,
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.cjs",
+    "check": "node --check src/main.cjs && node --check src/core.cjs && node --check src/collector.cjs && node --check src/bridge.cjs && node --check ui/app.js",
+    "capture": "electron . --capture",
+    "pack": "electron-builder --dir",
+    "format": "prettier --write src ui tests scripts package.json .github/workflows/ci.yml",
+    "format:check": "prettier --check src ui tests scripts package.json .github/workflows/ci.yml"
+  },
+  "devDependencies": {
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0",
+    "prettier": "3.9.10"
+  },
+  "build": {
+    "appId": "local.tokentracker.desktop",
+    "productName": "Token Tracker",
+    "files": [
+      "src/**/*",
+      "ui/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "extraResources": [
+      {
+        "from": "src/cli.cjs",
+        "to": "bridge/cli.cjs"
+      }
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "assets/icon.ico"
+    }
+  },
+  "author": "Munyathatguy",
+  "license": "MIT"
+}

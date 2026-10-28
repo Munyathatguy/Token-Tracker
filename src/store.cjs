@@ -1,0 +1,129 @@
+const { DatabaseSync } = require("node:sqlite");
+const { risk } = require("./core.cjs");
+class Store {
+  constructor(file) {
+    this.db = new DatabaseSync(file);
+    this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000;
+      CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY,data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,session_id TEXT,at INTEGER,label TEXT);
+      CREATE TABLE IF NOT EXISTS files(id TEXT PRIMARY KEY,data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS settings(id TEXT PRIMARY KEY,data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS notes(id INTEGER PRIMARY KEY,session_id TEXT,at INTEGER,kind TEXT,body TEXT);`);
+  }
+  get(table, id) {
+    return JSON.parse(
+      this.db.prepare(`SELECT data FROM ${table} WHERE id=?`).get(id)?.data ||
+        "null",
+    );
+  }
+  put(table, id, data) {
+    this.db
+      .prepare(
+        `INSERT INTO ${table}(id,data) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`,
+      )
+      .run(id, JSON.stringify(data));
+  }
+  apply(x, key) {
+    if (!x?.session) return false;
+    if (this.db.prepare("SELECT id FROM events WHERE id=?").get(key))
+      return false;
+    this.db.exec("BEGIN");
+    try {
+      const old = this.get("sessions", x.session.id) || {
+        compactions: 0,
+        status: "Observed",
+        coverage: "Observed locally; compaction history may be incomplete",
+      };
+      const clean = Object.fromEntries(
+        Object.entries(x.session).filter(
+          ([, v]) => v !== undefined && v !== null,
+        ),
+      );
+      const next = { ...old, ...clean };
+      if (x.compaction) {
+        next.compactions = (old.compactions || 0) + 1;
+        next.context = null;
+      }
+      this.put("sessions", next.id, next);
+      if (x.account) {
+        const a = this.get("accounts", x.account.id);
+        if (!a || x.account.at >= a.at)
+          this.put("accounts", x.account.id, x.account);
+      }
+      this.db
+        .prepare("INSERT INTO events VALUES (?,?,?,?)")
+        .run(key, next.id, x.at || Date.now(), x.event || "Usage updated");
+      this.db.exec("COMMIT");
+      return true;
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
+    }
+  }
+  snapshot() {
+    const now = Date.now();
+    return {
+      at: now,
+      accounts: this.db
+        .prepare("SELECT data FROM accounts")
+        .all()
+        .map((r) => JSON.parse(r.data)),
+      sessions: this.db
+        .prepare("SELECT data FROM sessions")
+        .all()
+        .map((r) => {
+          const s = JSON.parse(r.data);
+          return {
+            ...s,
+            risk: risk(s.context, s.compactions),
+            stale: now - (s.lastActivity || s.observedAt || 0) > 600000,
+          };
+        })
+        .sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0)),
+      events: this.db
+        .prepare(
+          "SELECT session_id AS sessionId,at,label FROM events WHERE label!='Usage updated' ORDER BY at DESC LIMIT 80",
+        )
+        .all(),
+      notes: this.db
+        .prepare("SELECT * FROM notes ORDER BY at DESC LIMIT 100")
+        .all(),
+      settings: {
+        pin: true,
+        notifications: true,
+        timezone: "Africa/Johannesburg",
+        ...(this.get("settings", "preferences") || {}),
+      },
+      integrations: {
+        codex: {
+          observe: "Local session records",
+          inform:
+            "On-demand CLI / optional MCP; automatic Desktop injection unavailable",
+        },
+        claude: {
+          observe: "Install statusline and hooks to connect",
+          inform:
+            "Prompt/start hooks; stop events recorded without starting another model turn",
+        },
+      },
+    };
+  }
+  note(sessionId, kind, body) {
+    if (
+      !["checkpoint", "background job"].includes(kind) ||
+      typeof body !== "string" ||
+      !body.trim() ||
+      body.length > 12000
+    )
+      throw Error("Invalid note");
+    if (!this.get("sessions", sessionId)) throw Error("Unknown session");
+    this.db
+      .prepare("INSERT INTO notes(session_id,at,kind,body) VALUES(?,?,?,?)")
+      .run(sessionId, Date.now(), kind, body.trim());
+  }
+  close() {
+    this.db.close();
+  }
+}
+module.exports = { Store };

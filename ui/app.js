@@ -2,11 +2,12 @@ const params = new URLSearchParams(location.search);
 const isBubble = params.get("view") !== "dashboard";
 let live = null,
   preview = params.has("preview"),
-  view = "overview",
+  view = params.get("section") || "overview",
   filter = "recent",
   selected = null,
   accountChoice = null;
 const drafts = new Map();
+let settingsDraft = null;
 const esc = (v) =>
   String(v ?? "").replace(
     /[&<>"']/g,
@@ -133,7 +134,7 @@ function quota(w, a) {
   const stale = a && Date.now() - a.at > 600000;
   const valid = w && w.state === "reported" && !expired;
   const n = valid ? w.remaining : null;
-  return `<div class="quota-number mono">${n === null ? "—" : esc(n) + "%"}<small>${n === null ? "unavailable" : "remaining"}</small></div><div class="bar quota-rail ${n === null ? "unknown" : n <= 8 ? "red" : n <= 30 ? "amber" : ""}"><span style="width:${n === null ? 0 : n}%"></span></div><div class="reset">${expired ? "Awaiting refreshed reading" : stale ? "Stale · last reported value" : reset(w?.resetsAt)}</div>`;
+  return `<div class="quota-number mono">${n === null ? "—" : esc(n) + "%"}<small>${n === null ? "unavailable" : "remaining"}</small></div><div class="bar quota-rail ${n === null ? "unknown" : n <= (live?.settings.alertWrapRemaining ?? 8) ? "red" : n <= (live?.settings.alertWarnRemaining ?? 30) ? "amber" : ""}"><span style="width:${n === null ? 0 : n}%"></span></div><div class="reset">${expired ? "Awaiting refreshed reading" : stale ? "Stale · last reported value" : reset(w?.resetsAt)}</div>`;
 }
 // Styles set in generated markup are restricted to numeric percentages from normalised data.
 function spectrum(s) {
@@ -141,9 +142,104 @@ function spectrum(s) {
   return `<div class="spectrum" title="Continuity-risk heuristic, not measured performance"><i style="left:${score ?? 0}%;${score === null ? "display:none" : ""}"></i></div>`;
 }
 function bubble(s) {
-  const a = s.accounts.find((a) => a.id === accountChoice) || s.accounts[0];
-  const sessions = s.sessions.filter((x) => !x.stale).slice(0, 3);
-  return `<div class="bubble"><header class="titlebar"><div class="brand"><span class="mark">◴</span>Token Tracker</div><div><button class="icon-btn" data-action="pin" title="Toggle always on top" aria-label="Toggle always on top">⌖</button><button class="icon-btn" data-action="hide" title="Minimise to tray" aria-label="Minimise to tray">−</button></div></header><div class="bubble-main"><div class="row clock-row"><span class="muted">${clock()}</span>${preview ? '<span class="tag preview">DESIGN PREVIEW</span>' : '<span class="tiny"><span class="dot"></span>LOCAL</span>'}</div><div class="row quota-title"><select id="account-select" aria-label="Choose account allowance">${s.accounts.map((v, i) => `<option value="${esc(v.id)}" ${v.id === a?.id ? "selected" : ""}>${esc(v.client)} · profile ${i + 1}</option>`).join("") || "<option>Account allowance</option>"}</select><span class="tiny muted">Shared across chats</span></div><div class="quota-block"><div class="name">Current usage window${a?.current?.minutes ? " · " + Math.round(a.current.minutes / 60) + "h" : ""}</div>${quota(a?.current, a)}</div><div class="quota-block"><div class="name">Weekly allowance</div>${quota(a?.weekly, a)}</div><div class="bubble-section"><div class="row"><span class="eyebrow">Sessions</span><span class="tiny muted">${s.sessions.filter((x) => !x.stale).length} recent</span></div>${sessions.length ? sessions.map((x) => `<div class="bubble-session"><div class="row"><strong>${esc(x.project || x.client)}</strong><span class="tiny muted">${esc(x.status || "Observed")}</span></div><div class="session-sub"><span>${esc(x.client)} · context ${x.context ? Math.round(x.context.used) + "% used" : "unavailable"}</span><span>${x.compactions || 0} compactions</span></div>${spectrum(x)}</div>`).join("") : '<div class="empty">Waiting for session readings.<br>Open the dashboard to connect a client.</div>'}</div></div><footer class="bubble-footer"><span>${preview ? "Illustrative data" : age(a?.at)}<br>Context scale = continuity risk</span><button data-action="dashboard">Dashboard ↗</button></footer></div>`;
+  if (s.bubble?.mode === "icon")
+    return `<button class="floating-icon" data-mode="compact" title="Show Token Tracker usage strip" aria-label="Show Token Tracker usage strip"><span>◴</span><i></i></button>`;
+  if ((s.bubble?.mode || s.settings.bubbleMode) === "compact")
+    return compactBubble(s);
+  const a =
+    s.accounts.find(
+      (a) => a.id === (accountChoice || s.settings.preferredAccountId),
+    ) || s.accounts[0];
+  const sessions = s.sessions
+    .filter((x) => !x.stale)
+    .slice(0, s.settings.sessionRows || 3);
+  return `<div class="bubble ${s.settings.showContext === false ? "hide-context" : ""} ${s.settings.showCompactions === false ? "hide-compactions" : ""} ${s.settings.showClock === false ? "hide-clock" : ""}"><header class="titlebar"><div class="brand"><span class="mark">◴</span>Token Tracker</div><div><button class="icon-btn" data-action="settings" title="Settings" aria-label="Settings">⚙</button><button class="icon-btn" data-mode="compact" title="Collapse to compact strip" aria-label="Collapse to compact strip">⤡</button><button class="icon-btn" data-action="pin" title="Toggle always on top" aria-label="Toggle always on top">⌖</button><button class="icon-btn" data-action="hide" title="Minimise to tray" aria-label="Minimise to tray">−</button></div></header><div class="bubble-main"><div class="bubble-quick">${quickControls(s)}<span class="muted tiny">Size · opacity · theme · pin</span></div><div class="row clock-row"><span class="muted bubble-clock">${clock()}</span>${preview ? '<span class="tag preview">DESIGN PREVIEW</span>' : '<span class="tiny"><span class="dot"></span>LOCAL</span>'}</div><div class="row quota-title"><select id="account-select" aria-label="Choose account allowance">${s.accounts.map((v, i) => `<option value="${esc(v.id)}" ${v.id === a?.id ? "selected" : ""}>${esc(v.client)} · profile ${i + 1}</option>`).join("") || "<option>Account allowance</option>"}</select><span class="tiny muted">Shared across chats</span></div><div class="quota-block"><div class="name">Current usage window${a?.current?.minutes ? " · " + Math.round(a.current.minutes / 60) + "h" : ""}</div>${quota(a?.current, a)}</div><div class="quota-block"><div class="name">Weekly allowance</div>${quota(a?.weekly, a)}</div><div class="bubble-section"><div class="row"><span class="eyebrow">Sessions</span><span class="tiny muted">${s.sessions.filter((x) => !x.stale).length} recent</span></div>${sessions.length ? sessions.map((x) => `<div class="bubble-session"><div class="row"><strong>${esc(x.project || x.client)}</strong><span class="tiny muted">${esc(x.status || "Observed")}</span></div><div class="session-sub"><span class="session-context">${esc(x.client)} · context ${x.context ? Math.round(x.context.used) + "% used" : "unavailable"}</span><span class="session-compactions">${x.compactions || 0} compactions</span></div>${spectrum(x)}</div>`).join("") : '<div class="empty">Waiting for session readings.<br>Open the dashboard to connect a client.</div>'}</div></div><footer class="bubble-footer"><span>${preview ? "Illustrative data" : age(a?.at)}<br>Context scale = continuity risk</span><button data-action="dashboard">Dashboard ↗</button></footer></div>`;
+}
+function quickControls(s) {
+  const p = s.settings;
+  return `<div class="quick-controls"><button data-quick="smaller" title="Smaller bubble (${Math.round(p.compactScale * 100)}%)" aria-label="Smaller bubble">A−</button><button data-quick="larger" title="Larger bubble (${Math.round(p.compactScale * 100)}%)" aria-label="Larger bubble">A+</button><button class="opacity-quick" data-quick="opacity" title="Opacity ${Math.round(p.opacity * 100)}%, transparency ${Math.round((1 - p.opacity) * 100)}% — click to cycle" aria-label="Cycle bubble opacity">${Math.round(p.opacity * 100)}%</button><button data-quick="theme" title="Switch light / dark theme" aria-label="Switch light / dark theme">${live?.effectiveTheme === "light" ? "☾" : "☼"}</button><button data-quick="visibility" title="${p.visibilityMode === "updates" ? "Show bubble all the time" : "Show only on AI updates / activity"}" aria-label="Toggle always visible / updates only">${p.visibilityMode === "updates" ? "◌" : "◉"}</button><button data-quick="pin" class="${p.pin ? "enabled" : ""}" aria-pressed="${p.pin}" title="${p.pin ? "Disable" : "Enable"} always on top" aria-label="Toggle always on top">⌖</button></div>`;
+}
+function compactBubble(s) {
+  const a =
+    (s.bubble?.temporary && s.lastPopup?.client
+      ? s.accounts.find((a) => a.client === s.lastPopup.client)
+      : null) ||
+    s.accounts.find(
+      (a) => a.id === (accountChoice || s.settings.preferredAccountId),
+    ) ||
+    s.accounts[0];
+  const session =
+    s.sessions.find((x) => !x.stale && x.client === a?.client) ||
+    s.sessions.find((x) => !x.stale);
+  const pct = (w) =>
+    w && w.state === "reported" && (!w.resetsAt || w.resetsAt > Date.now())
+      ? `${Math.round(w.remaining)}<small>%</small>`
+      : '<span class="unavailable">—</span>';
+  const stale = !a || Date.now() - a.at > 600000;
+  const notice = s.bubble?.temporary
+    ? s.lastPopup?.label
+    : preview
+      ? "Design preview"
+      : stale
+        ? "Stale reading"
+        : "Reported";
+  return `<section class="compact-bubble"><header class="compact-header"><span class="compact-source"><span class="dot"></span>${esc(a?.client || "Token Tracker")}</span><span class="compact-notice" title="${esc(notice)}">${esc(notice || "Reported")}</span><div class="compact-controls">${quickControls(s)}<button class="icon-btn" data-action="settings" title="Settings" aria-label="Settings">⚙</button><button class="icon-btn" data-mode="expanded" title="Expand bubble" aria-label="Expand bubble">⤢</button><button class="icon-btn" data-action="hide" title="Hide to tray" aria-label="Hide to tray">−</button></div></header><button class="compact-metrics ${s.settings.showContext === false ? "no-context" : ""}" data-action="dashboard" title="Open detailed usage dashboard"><span><small>Current left</small><strong class="mono">${pct(a?.current)}</strong></span><span><small>Weekly left</small><strong class="mono">${pct(a?.weekly)}</strong></span>${s.settings.showContext !== false ? `<span class="compact-context"><small>Context used</small><b class="mono">${session?.context ? Math.round(session.context.used) + "%" : "—"}</b>${s.settings.showCompactions !== false ? `<em>↻ ${session?.compactions || 0}</em>` : ""}</span>` : ""}</button><footer class="compact-footer">${s.settings.showContext !== false ? `<span class="compact-risk">${spectrum(session || {})}</span>` : ""}<span>${stale ? "stale · " : ""}${[s.settings.showClock !== false ? time(Date.now()) : "", s.settings.showCompactions !== false ? (session?.compactions || 0) + " compactions" : ""].filter(Boolean).join(" · ") || "Shared account allowance"}</span></footer></section>`;
+}
+function settingsView(s) {
+  const p = settingsDraft || s.settings;
+  return `<section class="panel settings-panel"><h2>Desktop bubble</h2><p class="muted">Keep the strip small. Expand only when you need more detail. Changes are saved on this computer.</p><form id="preferences-form"><div class="settings-grid"><label>Display behaviour<select class="field" name="visibilityMode">${[
+    ["always", "Always visible"],
+    ["updates", "Only on AI updates / activity"],
+    ["floating-icon", "Floating icon only"],
+    ["tray", "Tray icon only — no pop-ups"],
+  ]
+    .map(
+      ([k, l]) =>
+        `<option value="${k}" ${p.visibilityMode === k ? "selected" : ""}>${l}</option>`,
+    )
+    .join(
+      "",
+    )}</select></label><label>Default bubble view<select class="field" name="bubbleMode">${[
+    ["compact", "Compact strip"],
+    ["expanded", "Expanded panel"],
+  ]
+    .map(
+      ([k, l]) =>
+        `<option value="${k}" ${p.bubbleMode === k ? "selected" : ""}>${l}</option>`,
+    )
+    .join(
+      "",
+    )}</select></label><label>Colour theme<select class="field" name="theme">${["dark", "light", "system"].map((k) => `<option value="${k}" ${p.theme === k ? "selected" : ""}>${k[0].toUpperCase() + k.slice(1)}</option>`).join("")}</select></label><label>Overall compact size <output id="scale-value">${Math.round(p.compactScale * 100)}%</output><input class="field" name="compactScale" type="range" min="80" max="140" step="10" value="${Math.round(p.compactScale * 100)}"><small class="muted">Scales the whole strip, including text. Quick A− / A+ controls are on the bubble.</small></label><label>Compact width <output id="width-value">${p.compactWidth}px</output><input class="field" name="compactWidth" type="range" min="240" max="380" step="10" value="${p.compactWidth}"><small class="muted">Default 260 × 96 logical pixels. Windows display scaling also affects size.</small></label><label>Bubble opacity <output id="opacity-value">${Math.round(p.opacity * 100)}%</output><input class="field" name="opacity" type="range" min="35" max="100" step="1" value="${Math.round(p.opacity * 100)}"><small class="muted">35% is more transparent; 100% is fully opaque. Dashboard stays opaque.</small></label><label>Pop-up duration<select class="field" name="popupSeconds">${[2, 3, 5, 8, 10, 15].map((n) => `<option value="${n}" ${p.popupSeconds === n ? "selected" : ""}>${n} seconds</option>`).join("")}</select></label><label>Display timezone<input name="timezone" class="field" value="${esc(p.timezone)}"></label><label>Account shown in bubble<select class="field" name="preferredAccountId"><option value="">Automatic · latest reported</option>${s.accounts.map((a, i) => `<option value="${esc(a.id)}" ${a.id === p.preferredAccountId ? "selected" : ""}>${esc(a.client)} · profile ${i + 1}</option>`).join("")}</select></label><label>Session rows in expanded view<select class="field" name="sessionRows">${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${p.sessionRows === n ? "selected" : ""}>${n} session${n === 1 ? "" : "s"}</option>`).join("")}</select></label>${[
+    ["alertWarnRemaining", "Warning"],
+    ["alertPrepareRemaining", "Prepare to finish"],
+    ["alertWrapRemaining", "Wrap up"],
+  ]
+    .map(
+      ([k, l]) =>
+        `<label>${l} at % remaining<input class="field" name="${k}" type="number" min="1" max="99" value="${p[k]}"></label>`,
+    )
+    .join("")}</div><div class="settings-checks">${[
+    ["pin", "Keep the bubble above other windows"],
+    ["showContext", "Show context occupancy and risk scale"],
+    ["showCompactions", "Show observed compaction count"],
+    ["showClock", "Show clock in bubble"],
+    [
+      "popupOnDelivery",
+      "Briefly show the strip when an awareness update is supplied",
+    ],
+    [
+      "popupOnActivity",
+      "Briefly show the strip on observed AI prompt / response activity",
+    ],
+    ["notifications", "Desktop notifications when allowance is low"],
+  ]
+    .map(
+      ([k, l]) =>
+        `<label><input type="checkbox" name="${k}" ${p[k] ? "checked" : ""}> ${l}</label>`,
+    )
+    .join(
+      "",
+    )}</div><p class="muted tiny">Pop-ups do not take keyboard focus and return to the tray automatically. Delivery means the adapter supplied the update to the client, not proof the model read it. Codex Desktop currently supports observed activity, not automatic awareness injection.</p><button class="primary" type="submit">Save settings</button><button type="button" id="preview-popup">Preview compact strip</button></form></section>`;
 }
 function accountCard(a) {
   return `<article class="account-card"><div class="row"><h2>${esc(a.client)}</h2><span class="tag">${Date.now() - a.at > 600000 ? "STALE" : "REPORTED"}</span></div><div class="account-meta">Shared account allowance · ${esc(a.bucket)} · ${age(a.at)}</div><div class="quota-pair"><div><div class="name">Current window</div>${quota(a.current, a)}</div><div><div class="name">Weekly</div>${quota(a.weekly, a)}</div></div></article>`;
@@ -168,13 +264,13 @@ function overview(s) {
       )
       .join("") ||
     '<p class="muted">Activity appears when a connected client reports events.</p>'
-  }</section>${details(s) || `<section class="panel"><span class="eyebrow">Leave a clean stopping point</span><h2 style="margin-top:12px">Enough room to finish well.</h2><p class="muted">Choose a session to save verified progress or record a download that will continue running.</p><p class="tiny muted">Warnings begin at 30% remaining. Prepare at 15%; wrap up at 8%. These are planning signals, not guaranteed time remaining.</p><button data-action="copy">Copy current AI update</button></section>`}</div>`;
+  }</section>${details(s) || `<section class="panel"><span class="eyebrow">Leave a clean stopping point</span><h2 style="margin-top:12px">Enough room to finish well.</h2><p class="muted">Choose a session to save verified progress or record a download that will continue running.</p><p class="tiny muted">Warnings begin at ${s.settings.alertWarnRemaining}% remaining. Prepare at ${s.settings.alertPrepareRemaining}%; wrap up at ${s.settings.alertWrapRemaining}%. These are planning signals, not guaranteed time remaining.</p><button data-action="copy">Copy current AI update</button></section>`}</div>`;
 }
 function integrations(s) {
   return `<section class="panel"><h2>Client connections</h2><div class="integration"><div class="row"><h3>Codex</h3><span class="tag">READING LOCAL RECORDS</span></div><p>Current and weekly account allowances, last-request context and task events. Session discovery covers the latest 7 days, up to 100 recently modified files. Earlier compactions may be missing when reading a recent tail.</p><p>Automatic updates into existing Codex Desktop chats are not connected. Copy an awareness update, run the local CLI, or configure the optional read-only MCP tool.</p><button data-action="copy">Copy awareness update</button></div><div class="integration"><div class="row"><h3>Claude Code</h3><span class="tag">${s.claudeInstalled ? "INSTALLED · AWAITING EVENTS" : "NOT INSTALLED"}</span></div><p>Connect the official statusline feed and lifecycle hooks. The existing statusline command is preserved, and settings are backed up. Uses your existing Node installation.</p><p>Prompt and session-start hooks deliver a short update to Claude. Stop and tool events update the monitor; stop hooks do not force another model response. Weekly/current allowance requires the client to supply rate-limit fields.</p><button id="install-claude" ${preview ? "disabled" : ""}>${s.claudeInstalled ? "Remove Claude integration" : "Connect Claude Code"}</button></div><div class="integration"><h3>Data and privacy</h3><p>Metadata stays in this computer’s application-data folder. No provider passwords, API keys or full messages are collected. The observer reads local records; it does not control the other apps.</p><label for="timezone-input">Display timezone</label><input class="field" id="timezone-input" value="${esc(zone())}"><button id="save-timezone">Save timezone</button><p>Automatic startup is off.</p></div></section>`;
 }
 function dashboard(s) {
-  return `<div class="workspace"><aside class="sidebar"><div class="brand"><span class="mark">◴</span>Token Tracker</div><div class="nav"><button data-view="overview" class="${view === "overview" ? "selected" : ""}">◫ &nbsp; Overview</button><button data-view="integrations" class="${view === "integrations" ? "selected" : ""}">⌁ &nbsp; Integrations</button><button data-action="bubble">◴ &nbsp; Show bubble</button></div><div class="sidebar-bottom"><span class="dot"></span>Runs on your computer<br>Monitoring uses no AI tokens.<br><br><span class="tiny">${esc(zone())}<br><span id="clock">${clock()}</span></span></div></aside><main class="main"><header class="pagehead"><div><span class="eyebrow">Your AI working allowance</span><h1>${view === "overview" ? "Room to finish." : "Connected, on your terms."}</h1><p class="muted">${view === "overview" ? "Plan the work. Know when to save your place." : "Live readings and model updates are separate capabilities."}</p></div><div class="head-actions"><button id="preview-toggle">${preview ? "Return to live data" : "Preview design"}</button><button data-action="hide">Minimise to tray</button></div></header>${preview ? '<div class="notice">DESIGN PREVIEW · These figures are illustrative. No sample usage is written into your live history.</div>' : ""}${s.collector?.errors?.length ? '<div class="notice">Some readings could not refresh. Last observed data is retained and may be stale.</div>' : ""}${view === "overview" ? overview(s) : integrations(s)}<p class="muted tiny">${preview ? "Illustrative preview" : `Collector ${age(s.collector?.lastScan)} · client-reported values · stale after 10 minutes`}</p></main></div>`;
+  return `<div class="workspace"><aside class="sidebar"><div class="brand"><span class="mark">◴</span>Token Tracker</div><div class="nav"><button data-view="overview" class="${view === "overview" ? "selected" : ""}">◫ &nbsp; Overview</button><button data-view="integrations" class="${view === "integrations" ? "selected" : ""}">⌁ &nbsp; Integrations</button><button data-view="settings" class="${view === "settings" ? "selected" : ""}">⚙ &nbsp; Settings</button><button data-action="bubble">◴ &nbsp; Show bubble</button></div><div class="sidebar-bottom"><span class="dot"></span>Runs on your computer<br>Monitoring uses no AI tokens.<br><br><span class="tiny">${esc(zone())}<br><span id="clock">${clock()}</span></span></div></aside><main class="main"><header class="pagehead"><div><span class="eyebrow">Your AI working allowance</span><h1>${view === "overview" ? "Room to finish." : view === "settings" ? "Small, and out of your way." : "Connected, on your terms."}</h1><p class="muted">${view === "overview" ? "Plan the work. Know when to save your place." : "Live readings and model updates are separate capabilities."}</p></div><div class="head-actions">${quickControls(s)}<button id="preview-toggle">${preview ? "Return to live data" : "Preview design"}</button><button data-action="hide">Minimise to tray</button></div></header>${preview ? '<div class="notice">DESIGN PREVIEW · These figures are illustrative. No sample usage is written into your live history.</div>' : ""}${s.collector?.errors?.length ? '<div class="notice">Some readings could not refresh. Last observed data is retained and may be stale.</div>' : ""}${view === "overview" ? overview(s) : view === "settings" ? settingsView(s) : integrations(s)}<p class="muted tiny">${preview ? "Illustrative preview" : `Collector ${age(s.collector?.lastScan)} · client-reported values · stale after 10 minutes`}</p></main></div>`;
 }
 function toast(text) {
   const el = document.querySelector("#toast");
@@ -191,15 +287,102 @@ async function act(action, payload) {
     toast(e.message);
   }
 }
+function readPreferencesForm(form) {
+  const p = {
+    theme: form.elements.theme.value,
+    bubbleMode: form.elements.bubbleMode.value,
+    visibilityMode: form.elements.visibilityMode.value,
+    compactWidth: Number(form.elements.compactWidth.value),
+    compactScale: Number(form.elements.compactScale.value) / 100,
+    opacity: Number(form.elements.opacity.value) / 100,
+    popupSeconds: Number(form.elements.popupSeconds.value),
+    timezone: form.elements.timezone.value,
+    preferredAccountId: form.elements.preferredAccountId.value,
+    sessionRows: Number(form.elements.sessionRows.value),
+  };
+  for (const k of [
+    "alertWarnRemaining",
+    "alertPrepareRemaining",
+    "alertWrapRemaining",
+  ])
+    p[k] = Number(form.elements[k].value);
+  for (const k of [
+    "pin",
+    "popupOnDelivery",
+    "popupOnActivity",
+    "notifications",
+    "showContext",
+    "showCompactions",
+    "showClock",
+  ])
+    p[k] = form.elements[k].checked;
+  return p;
+}
 function render() {
   if (!live) return;
   const s = preview ? demo() : live;
+  if (preview) {
+    s.settings = { ...s.settings, ...live.settings };
+    s.bubble = live.bubble;
+  }
+  document.documentElement.dataset.theme = live.effectiveTheme || "dark";
+  document.body.classList.toggle("bubble-window", isBubble);
+  document.documentElement.style.setProperty(
+    "--compact-scale",
+    String(s.settings.compactScale || 1),
+  );
+  document.documentElement.classList.toggle("bubble-window", isBubble);
   document.querySelector("#app").innerHTML = isBubble
     ? bubble(s)
     : dashboard(s);
   document
     .querySelectorAll("[data-action]")
     .forEach((b) => (b.onclick = () => act(b.dataset.action)));
+  document.querySelectorAll("[data-quick]").forEach(
+    (button) =>
+      (button.onclick = async () => {
+        const p = live.settings;
+        const key = button.dataset.quick;
+        let patch;
+        if (key === "pin") patch = { pin: !p.pin };
+        if (key === "theme")
+          patch = { theme: live.effectiveTheme === "dark" ? "light" : "dark" };
+        if (key === "visibility")
+          patch = {
+            visibilityMode:
+              p.visibilityMode === "updates" ? "always" : "updates",
+          };
+        if (key === "opacity")
+          patch = {
+            opacity: p.opacity > 0.85 ? 0.75 : p.opacity > 0.6 ? 0.5 : 1,
+          };
+        if (key === "smaller" || key === "larger")
+          patch = {
+            compactScale: Math.min(
+              1.4,
+              Math.max(
+                0.8,
+                Math.round(
+                  (p.compactScale + (key === "larger" ? 0.1 : -0.1)) * 10,
+                ) / 10,
+              ),
+            ),
+          };
+        if (patch) {
+          const next = await act(
+            key === "visibility" ? "preferences" : "quickPreferences",
+            patch,
+          );
+          if (next) {
+            live = await window.tracker.request("snapshot");
+            render();
+          }
+        }
+      }),
+  );
+  document
+    .querySelectorAll("[data-mode]")
+    .forEach((b) => (b.onclick = () => act("bubbleMode", b.dataset.mode)));
   document.querySelectorAll("[data-view]").forEach(
     (b) =>
       (b.onclick = () => {
@@ -273,7 +456,43 @@ function render() {
       live = await window.tracker.request("snapshot");
       render();
     };
+  const form = document.querySelector("#preferences-form");
+  if (form) {
+    form.oninput = () => {
+      settingsDraft = readPreferencesForm(form);
+    };
+    form.onchange = form.oninput;
+    form.elements.compactScale.oninput = () =>
+      (document.querySelector("#scale-value").textContent =
+        form.elements.compactScale.value + "%");
+    form.elements.opacity.oninput = () =>
+      (document.querySelector("#opacity-value").textContent =
+        form.elements.opacity.value + "%");
+    form.elements.compactWidth.oninput = () =>
+      (document.querySelector("#width-value").textContent =
+        form.elements.compactWidth.value + "px");
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const patch = readPreferencesForm(form);
+      const result = await act("preferences", patch);
+      if (result) {
+        live = await window.tracker.request("snapshot");
+        render();
+        settingsDraft = null;
+        render();
+        toast("Settings saved");
+      }
+    };
+    document.querySelector("#preview-popup").onclick = () =>
+      act("previewPopup");
+  }
 }
+window.tracker.onNavigate((section) => {
+  if (["overview", "integrations", "settings"].includes(section)) {
+    view = section;
+    render();
+  }
+});
 window.tracker
   .request("snapshot")
   .then((s) => {

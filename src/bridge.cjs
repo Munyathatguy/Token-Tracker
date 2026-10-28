@@ -3,7 +3,21 @@ const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { normaliseClaude, briefing } = require("./core.cjs");
-async function startBridge(store, dir) {
+async function startBridge(store, dir, onDelivery = () => {}) {
+  const pending = new Map();
+  function issue(client, sessionId) {
+    for (const [id, t] of pending)
+      if (Date.now() - t.at > 30000) pending.delete(id);
+    if (pending.size >= 100) pending.delete(pending.keys().next().value);
+    const ticket = {
+      id: crypto.randomUUID(),
+      client,
+      sessionId: typeof sessionId === "string" ? sessionId.slice(0, 200) : "",
+      at: Date.now(),
+    };
+    pending.set(ticket.id, ticket);
+    return ticket.id;
+  }
   const token = crypto.randomBytes(32).toString("hex");
   const address =
     process.platform === "win32"
@@ -38,6 +52,9 @@ async function startBridge(store, dir) {
               store.snapshot(),
               String(msg.sessionId || "").slice(0, 200),
             ),
+            ...(msg.target === "model"
+              ? { deliveryId: issue("MCP client", msg.sessionId) }
+              : {}),
           };
         else if (msg.action === "claude") {
           if (
@@ -59,8 +76,18 @@ async function startBridge(store, dir) {
           );
           result = {
             text: briefing(store.snapshot(), msg.data.session_id),
-            delivered: ["UserPromptSubmit", "SessionStart"].includes(msg.event),
+            ...(["UserPromptSubmit", "SessionStart"].includes(msg.event)
+              ? { deliveryId: issue("Claude", "claude:" + msg.data.session_id) }
+              : {}),
           };
+        } else if (msg.action === "delivery") {
+          const ticket = pending.get(msg.deliveryId);
+          if (!ticket || Date.now() - ticket.at > 30000)
+            throw Error("Unknown or expired delivery");
+          pending.delete(msg.deliveryId);
+          const delivery = store.recordDelivery(ticket);
+          onDelivery(delivery);
+          result = { recorded: true };
         } else throw Error("Unsupported action");
         socket.end(JSON.stringify({ ok: true, ...result }) + "\n");
       } catch (e) {

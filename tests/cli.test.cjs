@@ -39,6 +39,8 @@ test("real CLI prompt hook delivers awareness, stop observes without a model loo
     );
     assert.equal(prompt.hookSpecificOutput.hookEventName, "UserPromptSubmit");
     assert.match(prompt.hookSpecificOutput.additionalContext, /Local time/);
+    const delivery = s.snapshot().lastDelivery;
+    assert.equal(delivery.client, "Claude");
     const stop = await cli(
       home,
       "claude-hook",
@@ -46,6 +48,7 @@ test("real CLI prompt hook delivers awareness, stop observes without a model loo
     );
     assert.equal(stop, "");
     assert.equal(s.snapshot().sessions[0].status, "Waiting");
+    assert.equal(s.snapshot().lastDelivery.id, delivery.id);
     const mcp = await cli(
       home,
       "mcp",
@@ -63,6 +66,7 @@ test("real CLI prompt hook delivers awareness, stop observes without a model loo
       JSON.parse(mcp).result.content[0].text,
       /allowance unavailable/,
     );
+    assert.equal(s.snapshot().lastDelivery.client, "MCP client");
   } finally {
     await b.close();
     s.close();

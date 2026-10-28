@@ -39,3 +39,8 @@ Blue-grey surface, pale blue usage rails, amber/red only for approaching limits.
 
 ## Boundaries
 No universal guarantee of session attachment or intervention. No automatic credential extraction, usage-limit circumvention, autonomous interruption of other processes, destructive cleanup, or claims that thresholds guarantee task completion. Abrupt quota changes and client failures remain possible. Exact token allowances may be unavailable.
+
+## Desktop refinement — 2026-10-28
+Compact is the default, matching the owner's approximately 318 × 118 screen-pixel reference at their Windows scaling. Base size is 260 × 96 logical pixels, user-scalable from 80–140% with base width 240–380. The full panel is 350 × 440 and the optional floating icon 48 × 48. Keep current/weekly allowance figures emphasised; reduce secondary text.
+
+Expose important adjustments on the main windows: size, opacity/transparency, theme, visibility and always-on-top. Settings also controls content visibility, account preference, clock/timezone, expanded rows, planning thresholds, event pop-ups and their duration. Explicit display modes: always visible, updates only, floating icon only, tray icon only. Compact remains the default; users may choose another mode. Preserve standalone, zero-model-token monitoring.

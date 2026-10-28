@@ -222,9 +222,9 @@ function briefing(snapshot, id, now = Date.now()) {
     (s
       ? ` | Context: ${s.context ? Math.round(s.context.used) + "% used" : "unavailable"}; compactions observed: ${s.compactions || 0}.`
       : "") +
-    (minimum <= 8
+    (minimum <= (snapshot.settings?.alertWrapRemaining ?? 8)
       ? " Capacity is low: finish verification and save a checkpoint, unfinished work and background-job details."
-      : minimum <= 15
+      : minimum <= (snapshot.settings?.alertPrepareRemaining ?? 15)
         ? " Prepare a verified stopping point and handoff before starting large new work."
         : "")
   );

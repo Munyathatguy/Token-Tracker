@@ -6,6 +6,10 @@ A local Windows desktop companion for current-window and weekly AI usage allowan
 
 ![Illustrative usage bubble](docs/images/bubble-design.png)
 
+The default bubble is now a **compact 260 × 96 strip**, with larger remaining-usage figures and smaller secondary text. Adjust size, opacity, theme, visibility and always-on-top directly from the window. Settings offers explicit always-visible / updates-only / floating-icon / tray-only modes, plus content visibility and planning thresholds. See [desktop controls](docs/DESKTOP-CONTROLS.md).
+
+![Compact light theme](docs/images/bubble-light-design.png)
+
 ## What works in this version
 
 - **Codex observation:** reads local session records for reported account allowances/reset times, latest-request context, model and task activity. No provider credentials are read.
@@ -85,6 +89,7 @@ No cloud account, telemetry, provider keys or message-content storage. User-auth
 - [Build plan](docs/BUILD-PLAN.md)
 - [Verification and limitations](docs/VERIFICATION.md)
 - [Implementation roadmap](docs/ROADMAP.md)
+- [Desktop controls and settings](docs/DESKTOP-CONTROLS.md)
 
 ```powershell
 npm run check

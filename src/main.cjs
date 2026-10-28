@@ -8,14 +8,17 @@ const {
   screen,
   Notification,
   clipboard,
+  nativeTheme,
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
 const { Store } = require("./store.cjs");
 const { Collector } = require("./collector.cjs");
-const { startBridge } = require("./bridge.cjs");
+const { startBridge, request } = require("./bridge.cjs");
 const { briefing } = require("./core.cjs");
 const { installClaude, uninstallClaude } = require("./installer.cjs");
+const { bubbleSize, DEFAULTS } = require("./preferences.cjs");
+const { BubbleController } = require("./bubble.cjs");
 app.setName("Token Tracker");
 const capture = process.argv.includes("--capture");
 const smoke = process.argv.includes("--smoke");
@@ -38,6 +41,10 @@ let store,
   dashboard,
   timer,
   quitting = false;
+let bubbleControl,
+  lastPopup = null,
+  activityBaseline = false;
+const seenActivity = new Set();
 const notified = new Set();
 const ui = path.join(__dirname, "..", "ui", "index.html");
 function windowOptions(extra) {
@@ -59,23 +66,25 @@ function guard(win) {
   win.on("close", (e) => {
     if (!quitting) {
       e.preventDefault();
-      win.hide();
+      if (win === bubble && bubbleControl) bubbleControl.hide();
+      else win.hide();
     }
   });
 }
 function anchor() {
   const work = screen.getPrimaryDisplay().workArea;
+  const size = bubbleSize(store.snapshot().settings);
   return {
-    x: work.x + work.width - 390 - 18,
-    y: work.y + work.height - 594 - 18,
+    x: work.x + work.width - size.width - 18,
+    y: work.y + work.height - size.height - 18,
   };
 }
 function showBubble() {
   if (!bubble) return;
-  bubble.show();
-  bubble.focus();
+  bubbleControl.show();
 }
-function showDashboard() {
+function showDashboard(section = "overview") {
+  if (typeof section !== "string") section = "overview";
   if (!dashboard) {
     dashboard = new BrowserWindow(
       windowOptions({
@@ -93,11 +102,12 @@ function showDashboard() {
       e.preventDefault();
       dashboard.hide();
     });
-    dashboard.loadFile(ui, { query: { view: "dashboard" } });
+    dashboard.loadFile(ui, { query: { view: "dashboard", section } });
     dashboard.once("ready-to-show", () => dashboard.show());
   } else {
     dashboard.show();
     dashboard.focus();
+    dashboard.webContents.send("tracker:navigate", section);
   }
 }
 function snapshot() {
@@ -107,13 +117,106 @@ function snapshot() {
     ...s,
     collector: { lastScan: collector.lastScan, errors: collector.errors },
     claudeInstalled: !!store.get("settings", "claudeInstalled"),
+    effectiveTheme:
+      s.settings.theme === "system"
+        ? nativeTheme.shouldUseDarkColors
+          ? "dark"
+          : "light"
+        : s.settings.theme,
+    bubble: {
+      mode: bubbleControl?.mode || s.settings.bubbleMode,
+      temporary: !!bubbleControl?.temporary,
+    },
+    lastPopup,
   };
+}
+function broadcast() {
+  if (!store || !collector) return;
+  const snap = snapshot();
+  for (const win of [bubble, dashboard])
+    if (win && !win.isDestroyed())
+      win.webContents.send("tracker:changed", snap);
+}
+function setBubbleMode(mode) {
+  store.updatePreferences(
+    mode === "icon"
+      ? { visibilityMode: "floating-icon" }
+      : { bubbleMode: mode, visibilityMode: "always" },
+  );
+  bubbleControl.show(mode);
+  updateTray();
+  broadcast();
+}
+function updateTray() {
+  if (!tray) return;
+  const p = store.snapshot().settings;
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Show compact strip", click: () => setBubbleMode("compact") },
+      { label: "Show expanded bubble", click: () => setBubbleMode("expanded") },
+      { label: "Show floating icon", click: () => setBubbleMode("icon") },
+      { label: "Hide to tray", click: () => bubbleControl.hide() },
+      { label: "Open dashboard", click: () => showDashboard() },
+      { label: "Settings", click: () => showDashboard("settings") },
+      { type: "separator" },
+      {
+        label: "Keep bubble on top",
+        type: "checkbox",
+        checked: p.pin,
+        click: (item) => {
+          store.updatePreferences({ pin: item.checked });
+          bubbleControl.apply(bubbleControl.mode);
+          updateTray();
+        },
+      },
+      { type: "separator" },
+      {
+        label: "Quit Token Tracker",
+        click: () => {
+          quitting = true;
+          app.quit();
+        },
+      },
+    ]),
+  );
 }
 async function tick() {
   await collector.scan();
   const snap = snapshot();
-  for (const w of [bubble, dashboard])
-    if (w && !w.isDestroyed()) w.webContents.send("tracker:changed", snap);
+  for (const e of [...snap.events].reverse()) {
+    if (
+      !seenActivity.has(e.id) &&
+      activityBaseline &&
+      Date.now() - e.at < 30000 &&
+      [
+        "Work started",
+        "Response completed",
+        "UserPromptSubmit",
+        "Stop",
+      ].includes(e.label)
+    ) {
+      lastPopup = {
+        at: Date.now(),
+        client: snap.sessions.find((s) => s.id === e.sessionId)?.client,
+        label:
+          e.label === "Work started"
+            ? "AI work started"
+            : e.label === "Response completed"
+              ? "AI response finished"
+              : e.label === "Stop"
+                ? "AI response finished"
+                : "Prompt observed",
+      };
+      bubbleControl.delivery("activity");
+    }
+    seenActivity.add(e.id);
+  }
+  activityBaseline = true;
+  if (seenActivity.size > 2000) {
+    seenActivity.clear();
+    for (const e of snap.events) seenActivity.add(e.id);
+  }
+  broadcast();
   if (!capture && !smoke && snap.settings.notifications) {
     for (const a of snap.accounts)
       for (const [name, w] of [
@@ -122,12 +225,13 @@ async function tick() {
       ]) {
         if (
           !w ||
-          w.remaining > 15 ||
+          w.remaining > snap.settings.alertPrepareRemaining ||
           w.state !== "reported" ||
           Date.now() - a.at > 600000
         )
           continue;
-        const level = w.remaining <= 8 ? "wrap" : "prepare";
+        const level =
+          w.remaining <= snap.settings.alertWrapRemaining ? "wrap" : "prepare";
         const key = a.id + name + w.resetsAt + level;
         if (!notified.has(key)) {
           notified.add(key);
@@ -149,30 +253,60 @@ app
     const home = app.getPath("userData");
     await fs.mkdir(home, { recursive: true });
     store = new Store(path.join(home, "tracker.sqlite"));
+    if (capture || smoke)
+      store.updatePreferences({
+        ...DEFAULTS,
+        bubbleMode: "compact",
+        compactWidth: 260,
+        compactScale: 1,
+        theme: "dark",
+        opacity: 1,
+        popupSeconds: 2,
+        popupOnDelivery: true,
+        popupOnActivity: false,
+        startInTray: false,
+        visibilityMode: "always",
+      });
     collector = new Collector(store);
-    bridge = await startBridge(store, home);
+    bridge = await startBridge(store, home, (delivery) => {
+      lastPopup = {
+        at: delivery.at,
+        client: delivery.client,
+        label: "Update supplied · " + delivery.client,
+      };
+      bubbleControl?.delivery();
+      broadcast();
+    });
     const prefs = store.snapshot().settings;
     bubble = new BrowserWindow(
       windowOptions({
-        width: 390,
-        height: 594,
-        minWidth: 390,
-        minHeight: 400,
+        ...bubbleSize(prefs),
+        minWidth: 48,
+        minHeight: 48,
         frame: false,
         resizable: false,
         alwaysOnTop: prefs.pin,
-        skipTaskbar: false,
+        skipTaskbar: true,
+        transparent: true,
+        backgroundColor: "#00000000",
         show: false,
         ...anchor(),
       }),
     );
     guard(bubble);
+    bubbleControl = new BubbleController(
+      bubble,
+      () => store.snapshot().settings,
+      (bounds) => screen.getDisplayMatching(bounds).workArea,
+      broadcast,
+    );
+    bubbleControl.apply();
     bubble.once("ready-to-show", () => {
-      if (!capture && !smoke) showBubble();
+      if (!capture && !smoke) bubbleControl.reconcile();
     });
     bubble.on("minimize", (e) => {
       e.preventDefault();
-      bubble.hide();
+      bubbleControl.hide();
     });
     bubble.loadFile(ui, {
       query: { view: "bubble", ...(capture ? { preview: "1" } : {}) },
@@ -182,40 +316,18 @@ app
       .resize({ width: 24, height: 24 });
     tray = new Tray(icon);
     tray.setToolTip("Token Tracker · remaining AI usage");
-    tray.setContextMenu(
-      Menu.buildFromTemplate([
-        { label: "Show usage bubble", click: showBubble },
-        { label: "Open dashboard", click: showDashboard },
-        { type: "separator" },
-        {
-          label: "Keep bubble on top",
-          type: "checkbox",
-          checked: !!prefs.pin,
-          click: (item) => {
-            bubble.setAlwaysOnTop(item.checked);
-            store.put("settings", "preferences", {
-              ...store.snapshot().settings,
-              pin: item.checked,
-            });
-          },
-        },
-        { type: "separator" },
-        {
-          label: "Quit Token Tracker",
-          click: () => {
-            quitting = true;
-            app.quit();
-          },
-        },
-      ]),
+    updateTray();
+    tray.on("click", () =>
+      bubble.isVisible() ? bubbleControl.hide() : showBubble(),
     );
-    tray.on("click", () => (bubble.isVisible() ? bubble.hide() : showBubble()));
     ipcMain.handle("tracker:request", async (event, action, payload) => {
       if (![bubble, dashboard].some((w) => w && w.webContents === event.sender))
         throw Error("Untrusted sender");
       if (action === "snapshot") return snapshot();
       if (action === "hide") {
-        BrowserWindow.fromWebContents(event.sender).hide();
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (win === bubble) bubbleControl.hide();
+        else win.hide();
         return true;
       }
       if (action === "dashboard") {
@@ -226,13 +338,43 @@ app
         showBubble();
         return true;
       }
+      if (action === "settings") {
+        showDashboard("settings");
+        return true;
+      }
+      if (action === "previewPopup") {
+        lastPopup = { at: Date.now(), label: "Preview · no AI update" };
+        bubbleControl.hide();
+        bubbleControl.delivery("delivery", true);
+        broadcast();
+        return true;
+      }
+      if (action === "bubbleMode") {
+        setBubbleMode(payload);
+        return true;
+      }
+      if (action === "preferences") {
+        const next = store.updatePreferences(payload);
+        bubbleControl.reconcile();
+        updateTray();
+        broadcast();
+        return next;
+      }
+      if (action === "quickPreferences") {
+        const mode = bubbleControl.mode;
+        const next = store.updatePreferences(payload);
+        bubbleControl.cancel();
+        bubbleControl.apply(mode);
+        updateTray();
+        broadcast();
+        return next;
+      }
       if (action === "pin") {
         const pin = !bubble.isAlwaysOnTop();
-        bubble.setAlwaysOnTop(pin);
-        store.put("settings", "preferences", {
-          ...store.snapshot().settings,
-          pin,
-        });
+        store.updatePreferences({ pin });
+        bubbleControl.apply(bubbleControl.mode);
+        updateTray();
+        broadcast();
         return pin;
       }
       if (action === "copy") {
@@ -286,8 +428,10 @@ app
       3000,
     );
     screen.on("display-metrics-changed", () =>
-      bubble.setPosition(anchor().x, anchor().y),
+      bubbleControl.apply(bubbleControl.mode),
     );
+    screen.on("display-removed", () => bubbleControl.apply(bubbleControl.mode));
+    nativeTheme.on("updated", broadcast);
     app.on("second-instance", showBubble);
     if (capture || smoke) {
       await bubble.webContents.executeJavaScript(
@@ -296,6 +440,10 @@ app
       await new Promise((r) => setTimeout(r, 1200));
       const out = runtimeRoot;
       await fs.mkdir(out, { recursive: true });
+      await fs.rm(
+        path.join(out, capture ? "design-check.json" : "smoke-result.json"),
+        { force: true },
+      );
       await fs.writeFile(
         path.join(out, capture ? "bubble-design.png" : "bubble-live.png"),
         (await bubble.webContents.capturePage()).toPNG(),
@@ -305,8 +453,9 @@ app
         accountCount: snapshot().accounts.length,
         sqlite: true,
         tray: !tray.isDestroyed(),
+        compactSize: bubble.getSize(),
         renderer: await bubble.webContents.executeJavaScript(
-          '({title:document.title,quotaRails:document.querySelectorAll(".quota-rail").length,body:document.body.innerText.includes("remaining")})',
+          '({title:document.title,compact:!!document.querySelector(".compact-bubble"),noVerticalOverflow:document.body.scrollHeight<=innerHeight,theme:document.documentElement.dataset.theme})',
         ),
       };
       showBubble();
@@ -314,31 +463,129 @@ app
       result.closeHides = !bubble.isVisible() && !bubble.isDestroyed();
       showBubble();
       result.restore = bubble.isVisible();
+      bubbleControl.hide();
+      const supplied = await request(bridge.descriptor, {
+        action: "status",
+        target: "model",
+      });
+      await request(bridge.descriptor, {
+        action: "delivery",
+        deliveryId: supplied.deliveryId,
+      });
+      result.popup = {
+        visible: bubble.isVisible(),
+        compact: bubbleControl.mode === "compact",
+        focused: bubble.isFocused(),
+      };
+      await new Promise((r) => setTimeout(r, 2250));
+      result.popup.autoHides = !bubble.isVisible();
+      bubbleControl.show("expanded");
+      await new Promise((r) => setTimeout(r, 200));
+      result.expandedSize = bubble.getSize();
+      if (capture)
+        await fs.writeFile(
+          path.join(out, "bubble-expanded-design.png"),
+          (await bubble.webContents.capturePage()).toPNG(),
+        );
+      bubbleControl.show("icon");
+      await new Promise((r) => setTimeout(r, 150));
+      result.iconSize = bubble.getSize();
+      if (capture)
+        await fs.writeFile(
+          path.join(out, "bubble-icon-design.png"),
+          (await bubble.webContents.capturePage()).toPNG(),
+        );
       showDashboard();
       await new Promise((r) =>
         dashboard.webContents.once("did-finish-load", r),
       );
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 300));
       if (capture)
         await dashboard.webContents.executeJavaScript(
           'document.querySelector("#preview-toggle").click()',
         );
-      await new Promise((r) => setTimeout(r, 250));
+      await new Promise((r) => setTimeout(r, 200));
       await fs.writeFile(
         path.join(out, capture ? "dashboard-design.png" : "dashboard-live.png"),
         (await dashboard.webContents.capturePage()).toPNG(),
       );
-      result.dashboard = await dashboard.webContents.executeJavaScript(
-        '({sessions:document.querySelectorAll(".session-row").length,accounts:document.querySelectorAll(".account-card").length})',
+      dashboard.webContents.send("tracker:navigate", "settings");
+      await new Promise((r) => setTimeout(r, 150));
+      await dashboard.webContents.executeJavaScript(
+        `(()=>{const f=document.querySelector('#preferences-form');f.elements.theme.value='light';f.elements.opacity.value='65';f.elements.compactWidth.value='280';f.elements.bubbleMode.value='compact';f.requestSubmit();})()`,
+      );
+      await new Promise((r) => setTimeout(r, 350));
+      result.savedSettings = store.snapshot().settings;
+      result.settingsPersisted =
+        result.savedSettings.theme === "light" &&
+        result.savedSettings.opacity === 0.65 &&
+        result.savedSettings.compactWidth === 280;
+      result.nativeOpacity = bubble.getOpacity();
+      result.lightTheme = await dashboard.webContents.executeJavaScript(
+        "document.documentElement.dataset.theme",
+      );
+      if (capture)
+        await fs.writeFile(
+          path.join(out, "settings-design.png"),
+          (await dashboard.webContents.capturePage()).toPNG(),
+        );
+      store.updatePreferences({ compactWidth: 260, opacity: 1 });
+      bubbleControl.show("compact");
+      broadcast();
+      await new Promise((r) => setTimeout(r, 150));
+      if (capture)
+        await fs.writeFile(
+          path.join(out, "bubble-light-design.png"),
+          (await bubble.webContents.capturePage()).toPNG(),
+        );
+      await bubble.webContents.executeJavaScript(
+        'document.querySelector("[data-quick=larger]").click()',
+      );
+      await new Promise((r) => setTimeout(r, 200));
+      result.quickSize =
+        store.snapshot().settings.compactScale === 1.1 &&
+        Math.abs(bubble.getSize()[0] - 286) <= 1;
+      await bubble.webContents.executeJavaScript(
+        'document.querySelector("[data-quick=opacity]").click()',
+      );
+      await new Promise((r) => setTimeout(r, 150));
+      result.quickOpacity = Math.abs(bubble.getOpacity() - 0.75) < 0.02;
+      await bubble.webContents.executeJavaScript(
+        'document.querySelector("[data-quick=pin]").click()',
+      );
+      await new Promise((r) => setTimeout(r, 150));
+      result.quickPin = !bubble.isAlwaysOnTop();
+      await dashboard.webContents.executeJavaScript(
+        `(()=>{const f=document.querySelector('#preferences-form');f.elements.showContext.checked=false;f.elements.showCompactions.checked=false;f.elements.visibilityMode.value='always';f.requestSubmit();})()`,
+      );
+      await new Promise((r) => setTimeout(r, 200));
+      result.visibilityControls = await bubble.webContents.executeJavaScript(
+        '!document.querySelector(".compact-context") && !document.querySelector(".compact-risk")',
       );
       if (
         !result.tray ||
         !result.closeHides ||
         !result.restore ||
-        !result.renderer.body ||
-        result.renderer.quotaRails !== 2
+        !result.renderer.compact ||
+        !result.renderer.noVerticalOverflow ||
+        Math.abs(result.compactSize[0] - 260) > 1 ||
+        Math.abs(result.compactSize[1] - 96) > 1 ||
+        !result.popup.visible ||
+        !result.popup.compact ||
+        !result.popup.autoHides ||
+        result.popup.focused ||
+        !result.settingsPersisted ||
+        !result.quickSize ||
+        !result.quickOpacity ||
+        !result.quickPin ||
+        !result.visibilityControls ||
+        result.lightTheme !== "light" ||
+        Math.abs(result.nativeOpacity - 0.65) > 0.02
       )
-        throw Error("Desktop smoke assertions failed");
+        throw Error(
+          "Desktop appearance/lifecycle smoke assertions failed: " +
+            JSON.stringify(result),
+        );
       await fs.writeFile(
         path.join(out, capture ? "design-check.json" : "smoke-result.json"),
         JSON.stringify(result, null, 2),
@@ -352,6 +599,7 @@ app
     quitting = true;
     app.quit();
     process.exitCode = 1;
+    app.exit(1);
   });
 app.on("window-all-closed", () => {});
 app.on("before-quit", () => {

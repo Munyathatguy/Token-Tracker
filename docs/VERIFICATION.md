@@ -2,13 +2,15 @@
 
 ## Verified locally
 - Node 24.14.1; Electron 45.1.0; Windows x64.
-- `npm test`: 12 passing functional tests. Covers current/weekly remaining calculations; invalid/expired readings; latest-request vs cumulative context; privacy allowlisting; compaction deduplication/invalidation; incremental partial JSONL and restart; authenticated local IPC; prompt/start hook briefing; loop-free Stop handling; actual stdio MCP call; reversible Claude configuration and preservation of unrelated edits.
+- `npm test`: 21 passing functional tests. Covers current/weekly remaining calculations; invalid/expired readings; latest-request vs cumulative context; privacy allowlisting; compaction deduplication/invalidation; incremental partial JSONL and restart; authenticated local IPC; prompt/start hook briefing; loop-free Stop handling; actual stdio MCP call; reversible Claude configuration; ordered planning thresholds; preferences across database restart; visibility modes; acknowledged single-use delivery notices; focus-free timed pop-ups and cancellation on user interaction.
 - `npm run check`: source syntax checks pass.
 - `npm audit`: zero reported vulnerabilities (including development dependencies at verification time).
 - `npm run capture`: bubble and dashboard render; tray exists; close hides; restore works. Preview data never enters the live database.
 - `npm run start -- --smoke`: real local Codex metadata drives the desktop. Six discovered sessions and two account/bucket records at this observation; one recently active session. These counts are a local snapshot, not complete account coverage.
 - `npm run pack`: produces `dist/win-unpacked/Token Tracker.exe` plus supporting files and the external CLI bridge.
 - Packaged executable launched with `--smoke`: successful native tray, SQLite, usage rendering, dashboard, hide and restore checks. Owned smoke process exits after checks.
+- v0.2 source native capture tests additionally verify compact footprint (within one logical pixel of Windows DPI rounding), no vertical overflow, expanded/icon sizes, delivery over the real named-pipe bridge -> non-focused compact pop-up -> automatic hide, settings form save, native opacity 0.65, light-theme application, quick size/opacity/pin actions, and context visibility controls.
+- The rebuilt v0.2.0 Windows executable passed these same extended assertions with fresh isolated test data. It was then launched normally with the user's existing local history and default compact appearance.
 
 ## Not yet verified / not yet implemented
 - Claude live installation and a real model's receipt of hook updates. Synthetic stdin -> CLI -> local bridge -> returned `additionalContext` is tested; that is not live model acceptance.

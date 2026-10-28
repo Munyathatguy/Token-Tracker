@@ -32,3 +32,34 @@ test("bridge rejects missing authentication and accepts metadata only", async ()
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+test("only acknowledged model-facing output triggers a delivery notice, once", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "tracker-delivery-"));
+  const s = new Store(":memory:");
+  let notices = 0;
+  const b = await startBridge(s, dir, () => notices++);
+  try {
+    await request(b.descriptor, { action: "status" });
+    assert.equal(notices, 0);
+    const r = await request(b.descriptor, {
+      action: "status",
+      target: "model",
+    });
+    assert.equal(notices, 0);
+    assert.ok(r.deliveryId);
+    await request(b.descriptor, {
+      action: "delivery",
+      deliveryId: r.deliveryId,
+    });
+    assert.equal(notices, 1);
+    assert.equal(s.snapshot().lastDelivery.client, "MCP client");
+    await assert.rejects(
+      request(b.descriptor, { action: "delivery", deliveryId: r.deliveryId }),
+      /Unknown/,
+    );
+    assert.equal(notices, 1);
+  } finally {
+    await b.close();
+    s.close();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});

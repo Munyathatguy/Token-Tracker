@@ -55,11 +55,12 @@ async function main() {
           m = JSON.parse(line);
           if (m.id === undefined) return;
           let result;
+          let deliveryId;
           if (m.method === "initialize")
             result = {
               protocolVersion: m.params?.protocolVersion || "2024-11-05",
               capabilities: { tools: {} },
-              serverInfo: { name: "token-tracker", version: "0.1.0" },
+              serverInfo: { name: "token-tracker", version: "0.2.0" },
             };
           else if (m.method === "tools/list")
             result = {
@@ -79,21 +80,22 @@ async function main() {
           else if (
             m.method === "tools/call" &&
             m.params?.name === "get_session_awareness"
-          )
+          ) {
+            const status = await call({
+              action: "status",
+              sessionId: m.params.arguments?.sessionId,
+              target: "model",
+            });
+            deliveryId = status.deliveryId;
             result = {
               content: [
                 {
                   type: "text",
-                  text: (
-                    await call({
-                      action: "status",
-                      sessionId: m.params.arguments?.sessionId,
-                    })
-                  ).text,
+                  text: status.text,
                 },
               ],
             };
-          else if (["resources/list", "prompts/list"].includes(m.method))
+          } else if (["resources/list", "prompts/list"].includes(m.method))
             result = { [m.method.split("/")[0]]: [] };
           else {
             process.stdout.write(
@@ -105,9 +107,16 @@ async function main() {
             );
             return;
           }
-          process.stdout.write(
-            JSON.stringify({ jsonrpc: "2.0", id: m.id, result }) + "\n",
+          await new Promise((resolve) =>
+            process.stdout.write(
+              JSON.stringify({ jsonrpc: "2.0", id: m.id, result }) + "\n",
+              resolve,
+            ),
           );
+          if (deliveryId)
+            try {
+              await call({ action: "delivery", deliveryId });
+            } catch {}
         } catch (e) {
           if (m?.id !== undefined)
             process.stdout.write(
@@ -159,15 +168,21 @@ async function main() {
     try {
       const event = data.hook_event_name;
       const r = await call({ action: "claude", event, data });
-      if (["UserPromptSubmit", "SessionStart"].includes(event))
-        console.log(
-          JSON.stringify({
-            hookSpecificOutput: {
-              hookEventName: event,
-              additionalContext: r.text,
-            },
-          }),
+      if (["UserPromptSubmit", "SessionStart"].includes(event)) {
+        await new Promise((resolve) =>
+          process.stdout.write(
+            JSON.stringify({
+              hookSpecificOutput: {
+                hookEventName: event,
+                additionalContext: r.text,
+              },
+            }) + "\n",
+            resolve,
+          ),
         );
+        if (r.deliveryId)
+          await call({ action: "delivery", deliveryId: r.deliveryId });
+      }
     } catch {} // Tracker failure must not prevent the user's AI from working.
   }
 }

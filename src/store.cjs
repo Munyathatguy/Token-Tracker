@@ -1,5 +1,6 @@
 const { DatabaseSync } = require("node:sqlite");
 const { risk } = require("./core.cjs");
+const { DEFAULTS, validatePreferences } = require("./preferences.cjs");
 class Store {
   constructor(file) {
     this.db = new DatabaseSync(file);
@@ -83,18 +84,14 @@ class Store {
         .sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0)),
       events: this.db
         .prepare(
-          "SELECT session_id AS sessionId,at,label FROM events WHERE label!='Usage updated' ORDER BY at DESC LIMIT 80",
+          "SELECT id,session_id AS sessionId,at,label FROM events WHERE label!='Usage updated' ORDER BY at DESC LIMIT 80",
         )
         .all(),
       notes: this.db
         .prepare("SELECT * FROM notes ORDER BY at DESC LIMIT 100")
         .all(),
-      settings: {
-        pin: true,
-        notifications: true,
-        timezone: "Africa/Johannesburg",
-        ...(this.get("settings", "preferences") || {}),
-      },
+      settings: { ...DEFAULTS, ...(this.get("settings", "preferences") || {}) },
+      lastDelivery: this.get("settings", "lastDelivery"),
       integrations: {
         codex: {
           observe: "Local session records",
@@ -121,6 +118,36 @@ class Store {
     this.db
       .prepare("INSERT INTO notes(session_id,at,kind,body) VALUES(?,?,?,?)")
       .run(sessionId, Date.now(), kind, body.trim());
+  }
+  updatePreferences(patch) {
+    const next = { ...this.snapshot().settings, ...validatePreferences(patch) };
+    if (!(
+      next.alertWrapRemaining < next.alertPrepareRemaining &&
+      next.alertPrepareRemaining < next.alertWarnRemaining
+    ))
+      throw Error(
+        "Wrap-up threshold must be below prepare, and prepare below warning",
+      );
+    this.put("settings", "preferences", next);
+    return next;
+  }
+  recordDelivery(ticket) {
+    const delivery = {
+      id: ticket.id,
+      at: Date.now(),
+      client: ticket.client,
+      sessionId: ticket.sessionId || "",
+    };
+    this.put("settings", "lastDelivery", delivery);
+    this.db
+      .prepare("INSERT OR IGNORE INTO events VALUES(?,?,?,?)")
+      .run(
+        delivery.id,
+        delivery.sessionId,
+        delivery.at,
+        "Awareness supplied to " + delivery.client,
+      );
+    return delivery;
   }
   close() {
     this.db.close();

@@ -47,7 +47,8 @@ async function startBridge(store, dir, onDelivery = () => {}) {
         )
           throw Error("Unauthorized");
         let result;
-        if (msg.action === "status")
+        if (msg.action === "ping") result = { pid: process.pid };
+        else if (msg.action === "status")
           result = {
             text: briefing(
               store.snapshot(),
@@ -188,12 +189,34 @@ async function startBridge(store, dir, onDelivery = () => {}) {
   if (process.platform !== "win32") await fs.chmod(address, 0o600);
   const descriptor = { address, token, pid: process.pid };
   const file = path.join(dir, "bridge.json");
-  await fs.writeFile(file, JSON.stringify(descriptor), { mode: 0o600 });
+  async function publish() {
+    const tmp = file + "." + process.pid + ".tmp";
+    await fs.writeFile(tmp, JSON.stringify(descriptor), { mode: 0o600 });
+    await fs.rename(tmp, file);
+  }
+  await publish();
   return {
     descriptor,
+    checkHealth: async () => {
+      await request(descriptor, { action: "ping" });
+      let saved;
+      try {
+        saved = JSON.parse(await fs.readFile(file, "utf8"));
+      } catch {}
+      const repaired =
+        saved?.address !== address ||
+        saved?.token !== token ||
+        saved?.pid !== process.pid;
+      if (repaired) await publish();
+      return { state: "connected", at: Date.now(), repaired };
+    },
     close: async () => {
       await new Promise((r) => server.close(r));
-      await fs.rm(file, { force: true });
+      let saved;
+      try {
+        saved = JSON.parse(await fs.readFile(file, "utf8"));
+      } catch {}
+      if (saved?.token === token) await fs.rm(file, { force: true });
       if (process.platform !== "win32") await fs.rm(address, { force: true });
     },
   };

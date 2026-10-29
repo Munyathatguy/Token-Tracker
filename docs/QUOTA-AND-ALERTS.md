@@ -23,6 +23,13 @@ SessionStart/UserPromptSubmit supply awareness; tool hooks send it at most once 
 The dashboard separately shows configured status, observed hook calls, and client-output receipts (with the last supplied text). A transport receipt is not proof a model consumed or obeyed a warning. Old warnings are not invented retroactively. Until the host trusts and runs the hooks, Codex protection remains unverified.
 
 ## Verification
+### 2026-10-29 connection incident
+The owner reported no warnings in another Codex chat. The installed helper failed with ENOENT: its descriptor still identified yesterday's process, while the running application had a different process and named pipe. Hook and database records had no new activity for the reported period. The reason the descriptor became stale has not been established. Yesterday's low-quota output receipts do not prove delivery today.
+
+The bridge now verifies its endpoint and descriptor on each collector tick, atomically repairs missing/stale descriptor contents, records repairs, and exposes current health on the dashboard. Shutdown only removes its own descriptor. A second instance exits immediately rather than continuing initialization. A disconnected Codex helper returns explicit model-visible monitoring-unavailable context; Stop remains loop-free. This fallback requires the host to actually execute a trusted hook. It cannot inform a host that never runs hooks.
+
+Regression tests reproduce stale descriptor replacement and disconnected helper output. A live endpoint check remains distinct from host consumption and successful task wrap-up. No claim is made that the unknown external cause of descriptor staleness is resolved.
+
 26 automated functional tests include account API transport without thread/turn creation; empty bucket/partial window handling; warning/reset deduplication; actual CLI-to-bridge Codex output at a simulated 7% allowance with a wrap-up instruction; no Stop continuation; and reversible hook installation. The native Windows build verified one Codex card with 0% / 84%, no normal preview toggle, and a completed volume-zero audio pipeline test.
 
 After the owner enabled the five matching hooks, this development chat actually received model-visible Token Tracker developer context mid-turn. The local receipt matched the current chat and the supplied current/weekly/reset figures; the stable helper matched the source hash. This establishes live automatic delivery. It does not retroactively establish delivery during the earlier incident, nor prove a future low-quota task will always finish. Physical speaker audibility remains user-verifiable through Test alarm sound.

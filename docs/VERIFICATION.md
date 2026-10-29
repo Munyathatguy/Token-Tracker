@@ -1,5 +1,11 @@
 # Verification — 2026-10-28
 
+## 2026-10-29 connection repair
+- 28 automated tests pass, including stale descriptor repair with authenticated endpoint verification and explicit disconnected-hook model context. Syntax, formatting and audit checks pass.
+- Rebuilt Windows package passed the native smoke checks with isolated data. The normal application was restarted with existing private history preserved.
+- Live helper status and stored bridge health matched the new process. This chat received automatic fresh quota context. A new client-output receipt also appeared for the affected LOCAL AI chat; that receipt alone does not prove the model consumed or obeyed it.
+- The stale descriptor's original cause remains unknown. The repair detects/replaces that condition, and disconnected trusted hooks now report monitoring unavailable instead of silently suppressing the failure. A host that never executes hooks remains outside that fallback.
+
 ## v0.3 repair acceptance
 - 26 functional tests, including independent quota transport with no model turn; empty premium-bucket suppression; 0% current / 84% weekly retention; partial windows; persisted exhaustion/reset history; reversible Codex hooks; and a simulated 7% hook briefing with a wrap-up instruction.
 - Actual signed-in Codex account API read succeeded without reading auth files or starting a model request.

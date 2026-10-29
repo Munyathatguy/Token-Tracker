@@ -22,6 +22,35 @@ function cli(home, mode, input) {
     p.stdin.end(input);
   });
 }
+test("disconnected Codex hook explicitly warns the model while Stop stays loop free", async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "tracker-offline-"));
+  try {
+    const input = { session_id: "offline", hook_event_name: "PreToolUse" };
+    const result = JSON.parse(
+      await cli(home, "codex-hook", JSON.stringify(input)),
+    );
+    assert.match(
+      result.hookSpecificOutput.additionalContext,
+      /monitoring unavailable/i,
+    );
+    assert.match(
+      result.hookSpecificOutput.additionalContext,
+      /cannot provide.*warning/i,
+    );
+    assert.deepEqual(
+      JSON.parse(
+        await cli(
+          home,
+          "codex-hook",
+          JSON.stringify({ ...input, hook_event_name: "Stop" }),
+        ),
+      ),
+      {},
+    );
+  } finally {
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
 test("real CLI prompt hook delivers awareness, stop observes without a model loop, MCP works", async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "compass-cli-"));
   const s = new Store(":memory:");

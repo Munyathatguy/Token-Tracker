@@ -111,6 +111,7 @@ class Store {
       lastDelivery: this.get("settings", "lastDelivery"),
       lastCodexHook: this.get("settings", "lastCodexHook"),
       lastCodexDelivery: this.get("settings", "lastCodexDelivery"),
+      bridgeHealth: this.get("settings", "bridgeHealth"),
       integrations: {
         codex: {
           observe: "Local session records",

@@ -277,7 +277,10 @@ function settingsView(s) {
 }
 function alertPanel(s) {
   const hook = s.lastCodexHook;
-  return `<section class="panel usage-alerts"><div class="row"><h2>Usage alerts & model connection</h2><span class="tag">${esc(s.codexService?.state || "Local records")}</span></div><p class="muted">Quota refresh: ${s.codexService?.lastRefresh ? age(s.codexService.lastRefresh) : "waiting for account API"}. ${hook ? `Codex hook observed ${age(hook.at)}. Latest client output: ${s.lastCodexDelivery ? age(s.lastCodexDelivery.at) : "not observed"}.` : "Codex model updates: NOT CONNECTED. Monitoring alone does not warn the AI."}</p>${s.lastCodexDelivery?.summary ? `<details><summary>Last awareness text supplied to Codex</summary><p class="note">${esc(s.lastCodexDelivery.summary)}</p></details>` : ""}${s.codexService?.error ? `<p class="error">${esc(s.codexService.error)}. Last reported figures are retained.</p>` : ""}${
+  const health = s.bridgeHealth;
+  const bridgeOK =
+    health?.state === "connected" && Date.now() - health.at < 30000;
+  return `<section class="panel usage-alerts"><div class="row"><h2>Usage alerts & model connection</h2><span class="tag">${esc(s.codexService?.state || "Local records")}</span></div><p class="muted">Local model bridge: ${bridgeOK ? "verified live" : "NOT VERIFIED — model warnings may be unavailable"}. Quota refresh: ${s.codexService?.lastRefresh ? age(s.codexService.lastRefresh) : "waiting for account API"}. ${hook ? `Codex hook observed ${age(hook.at)}. Latest client output: ${s.lastCodexDelivery ? age(s.lastCodexDelivery.at) : "not observed"}.` : "Codex model updates: NOT CONNECTED. Monitoring alone does not warn the AI."}</p>${s.lastCodexDelivery?.summary ? `<details><summary>Last awareness text supplied to Codex</summary><p class="note">${esc(s.lastCodexDelivery.summary)}</p></details>` : ""}${s.codexService?.error ? `<p class="error">${esc(s.codexService.error)}. Last reported figures are retained.</p>` : ""}${
     (s.alerts || [])
       .slice(0, 4)
       .map(

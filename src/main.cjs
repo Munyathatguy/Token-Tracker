@@ -42,7 +42,7 @@ if (capture || smoke)
     path.join(runtimeRoot, capture ? "capture" : "smoke"),
   );
 else app.setPath("userData", path.join(app.getPath("appData"), "TokenTracker"));
-if (!app.requestSingleInstanceLock()) app.quit();
+if (!app.requestSingleInstanceLock()) app.exit(0);
 let store,
   collector,
   bridge,
@@ -204,6 +204,27 @@ function updateTray() {
   );
 }
 async function tick() {
+  if (bridge) {
+    try {
+      const health = await bridge.checkHealth();
+      store.put("settings", "bridgeHealth", health);
+      if (health.repaired)
+        store.recordAlert({
+          id: "bridge-repaired:" + health.at,
+          at: health.at,
+          kind: "connection",
+          title: "Model connection repaired",
+          body: "A stale or missing connection descriptor was replaced after verifying the live bridge.",
+          notification: "not requested",
+          soundStatus: "disabled",
+        });
+    } catch {
+      store.put("settings", "bridgeHealth", {
+        state: "unavailable",
+        at: Date.now(),
+      });
+    }
+  }
   await collector.scan();
   const snap = snapshot();
   for (const e of [...snap.events].reverse()) {

@@ -162,6 +162,16 @@ async function main() {
       } else if (event === "Stop") process.stdout.write("{}\n");
     } catch {
       if (data.hook_event_name === "Stop") process.stdout.write("{}\n");
+      else
+        process.stdout.write(
+          JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: data.hook_event_name,
+              additionalContext:
+                "[TOKEN TRACKER] Usage monitoring unavailable: the local tracker connection failed. I cannot provide a reliable low-usage warning. Do not assume capacity is available; verify the client's usage and save progress at safe task boundaries.",
+            },
+          }) + "\n",
+        );
     }
     return;
   }

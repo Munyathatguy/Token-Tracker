@@ -5,6 +5,32 @@ const os = require("node:os");
 const path = require("node:path");
 const { Store } = require("../src/store.cjs");
 const { startBridge, request } = require("../src/bridge.cjs");
+test("bridge health check repairs a stale descriptor and verifies its live endpoint", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "tracker-health-"));
+  const s = new Store(":memory:");
+  const b = await startBridge(s, dir);
+  try {
+    await fs.writeFile(
+      path.join(dir, "bridge.json"),
+      JSON.stringify({ address: "stale", token: "stale", pid: -1 }),
+    );
+    const health = await b.checkHealth();
+    assert.equal(health.state, "connected");
+    assert.equal(health.repaired, true);
+    const restored = JSON.parse(
+      await fs.readFile(path.join(dir, "bridge.json")),
+    );
+    assert.equal(restored.address, b.descriptor.address);
+    assert.equal(
+      (await request(restored, { action: "ping" })).pid,
+      process.pid,
+    );
+  } finally {
+    await b.close();
+    s.close();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
 test("bridge rejects missing authentication and accepts metadata only", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "compass-test-"));
   const s = new Store(":memory:");

@@ -1,5 +1,7 @@
 # Verification — 2026-10-28
 
+Reconciled October 30: [status and handoff](STATUS-AND-HANDOFF.md). Latest implementation a21c184 passed 30 tests, packaged native checks and GitHub run 41020602709. CLI/runtime health rechecked during documentation work. Historical acceptance does not establish sustained reliability; recurring bridge lifecycle failure remains unresolved.
+
 ## 2026-10-30 stale-value and launch-environment correction
 - 30 tests pass. New regressions cover stale per-window quota withholding/model thresholds and installed native Codex discovery without an injected PATH. Syntax, format and audit checks pass.
 - The account API and desktop usage tool agreed on live percentages; the screenshot's conflicting bubble figures were old readings. A real API read using empty PATH succeeded after native executable discovery was added.

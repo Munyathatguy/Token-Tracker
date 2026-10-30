@@ -1,5 +1,7 @@
 # Architecture and data contracts
 
+October 30 update: [status and handoff](STATUS-AND-HANDOFF.md). Windows discovery checks installed native Codex releases before PATH fallback. Refresh runs every 60 seconds; collector/bridge checks every 3 seconds. Timers start before initial collection completes. Per-window timestamps govern model thresholds; stale/expired percentages are withheld. Private runtime-status.json records bounded boot/heartbeat diagnostics. Recurring lifecycle cause remains unresolved.
+
 Collector -> normalised events -> SQLite -> snapshot -> bubble/dashboard and model bridge.
 
 ## Observation adapters

@@ -1,5 +1,7 @@
 # Token Tracker — product specification
 
+October 30 reconciliation: [status and handoff](STATUS-AND-HANDOFF.md). Immediate priority is reliable launches and cross-chat warning delivery; recurring lifecycle failure remains unresolved.
+
 ## Core objective
 Help the user and AI plan workload around the **remaining current-window and weekly usage allowances**, and verify/save work before model access is exhausted. Context, compaction, clock/date, tasks and recovery support this objective.
 

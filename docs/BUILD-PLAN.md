@@ -1,5 +1,7 @@
 # Implementation plan — 2026-10-28
 
+Historical sequence; current delivery is reliability investigation and acceptance, not an unbuilt MVP. See [status and handoff](STATUS-AND-HANDOFF.md). Public source publication is authorized; binary distribution and automatic startup remain gated. This clarification supersedes the older general publication wording below.
+
 Execute in this chat as requested. Do not pause at another approval gate before building.
 
 1. Core normalisation and tests: current/weekly remaining, account boundaries, stale/expired/unknown handling, context vs cumulative usage, event deduplication.

@@ -1,5 +1,7 @@
 # Quota correctness, alarms and model delivery — v0.3
 
+Consolidated October 30 incident history, sound findings, requirements and open challenges: [status and handoff](STATUS-AND-HANDOFF.md). Discovery is corrected; recurring bridge cause remains unresolved. Historical percentages must not be reused as current.
+
 ## Incident and root causes
 The owner reported that the dashboard and bubble replaced exhausted usage with dashes, displayed two Codex cards, and provided no evidence of model warnings or reset alarms.
 

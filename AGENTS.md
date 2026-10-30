@@ -1,5 +1,7 @@
 # Token Tracker
 
+Read docs/STATUS-AND-HANDOFF.md for current incidents. Do not certify lifecycle reliability from a restart, PATH correction or output receipt. Before AI downtime inventory useful ready authorized non-LLM jobs, preserve checkpoints/logs/process identity, and avoid duplicate or no-op work.
+
 Read `docs/PRODUCT.md`, `docs/ARCHITECTURE.md`, `docs/VERIFICATION.md` and `docs/ROADMAP.md` before changing behaviour.
 
 - Primary objective: remaining current-window and weekly **account usage** awareness for the user and AI, with clean task stopping/continuation. Context, time and compaction support that objective.

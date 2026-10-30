@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-30 source corrections (package remains 0.3.0)
+- Native Codex discovery independent of agent PATH; empty-PATH regression/live read verified.
+- Withhold stale model percentages; use per-window timestamps; mark historical compact values OLD / OFFLINE.
+- Refresh timers precede initial collection; bounded private runtime diagnostics.
+- 30 tests, native checks and CI passed; recurring bridge lifecycle remains unresolved.
+- Reconcile documentation, incidents, acceptance boundaries and continuation guidance.
+
 ## 0.3.0 — 2026-10-28
 - Retain current/weekly readings independently; suppress empty metadata-only quota cards.
 - Independent signed-in Codex account refresh without model requests.

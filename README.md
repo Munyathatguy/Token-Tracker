@@ -1,5 +1,7 @@
 # Token Tracker
 
+October 30 status: [incidents, challenges and handoff](docs/STATUS-AND-HANDOFF.md). Normal-launch Codex discovery is corrected, stale model percentages are withheld and compact history says OLD / OFFLINE. Recurring bridge lifecycle failure remains unresolved; live delivery and passed checks do not certify sustained reliability. Native Windows discovery now precedes PATH fallback.
+
 **Know how much AI usage remains, and leave enough room to finish well.**
 
 A local Windows desktop companion for current-window and weekly AI usage allowances. A movable bubble lives above the taskbar, minimises to the system tray, and opens a dashboard for session context, compactions, activity and continuation records.

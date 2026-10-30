@@ -1,5 +1,7 @@
 # Roadmap
 
+Immediate priority: investigate recurring bridge lifecycle failure using boot/heartbeat evidence and isolated normal-launch/restart/sleep-resume/per-chat acceptance. A restart, PATH correction or output receipt is insufficient certification. Resolve prepare/wrap sound coverage. See [status and handoff](STATUS-AND-HANDOFF.md) for evidence and flexible next steps.
+
 ## Current delivery
 Windows desktop app, independent metadata collector, quota-first bubble and dashboard, local persistence, native tray, Codex record observation, optional Claude adapter and read-only model bridge.
 

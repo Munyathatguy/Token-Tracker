@@ -1,5 +1,7 @@
 # Desktop controls (v0.2)
 
+October 30 update: [status and handoff](STATUS-AND-HANDOFF.md). Trusted Codex lifecycle delivery has been verified live, superseding the disconnected-Codex statement below, but recurring bridge failures remain unresolved. Alarm settings include reset nudges, opt-in exhaustion/reset/early-warning sounds, volume and Test alarm sound. OS mute/routing applies; prepare/wrap notices remain silent. Historical compact figures say OLD / OFFLINE; stale/expired percentages are withheld from AI guidance.
+
 The default is a **compact strip**, 260 × 96 logical pixels at 100% app size. On a Windows display scaled to 125%, this is approximately 325 × 120 screen pixels. Native window bounds may round by one logical pixel. Current and weekly remaining usage remain the prominent numbers; auxiliary labels are intentionally smaller.
 
 ## Controls directly on the bubble and dashboard

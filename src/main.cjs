@@ -51,7 +51,25 @@ let store,
   dashboard,
   timer,
   quitting = false;
-let alertEngine, codexService, quotaTimer;
+let alertEngine, codexService, quotaTimer, diagnosticTimer;
+const startedAt = Date.now();
+function runtimeDiagnostic(stage, error) {
+  return fs
+    .writeFile(
+      path.join(app.getPath("userData"), "runtime-status.json"),
+      JSON.stringify({
+        pid: process.pid,
+        startedAt,
+        at: Date.now(),
+        stage,
+        quotaService: codexService?.status?.state || "not started",
+        collectorRunning: collector?.running || false,
+        lastScan: collector?.lastScan || null,
+        error: error ? { name: error.name, code: error.code || null } : null,
+      }),
+    )
+    .catch(() => {});
+}
 let bubbleControl,
   lastPopup = null,
   activityBaseline = false;
@@ -323,6 +341,8 @@ app
   .then(async () => {
     const home = app.getPath("userData");
     await fs.mkdir(home, { recursive: true });
+    await runtimeDiagnostic("starting");
+    diagnosticTimer = setInterval(() => runtimeDiagnostic("running"), 30000);
     store = new Store(path.join(home, "tracker.sqlite"));
     if (app.isPackaged && process.platform === "win32" && !capture && !smoke) {
       try {
@@ -588,7 +608,6 @@ app
       }
       throw Error("Unsupported action");
     });
-    await tick();
     if (!capture && !smoke) {
       codexService.refresh();
       quotaTimer = setInterval(() => codexService.refresh(), 60000);
@@ -600,6 +619,7 @@ app
         }),
       3000,
     );
+    await tick();
     screen.on("display-metrics-changed", () =>
       bubbleControl.apply(bubbleControl.mode),
     );
@@ -804,6 +824,7 @@ app
     }
   })
   .catch((e) => {
+    runtimeDiagnostic("startup failed", e);
     console.error(e);
     quitting = true;
     app.quit();
@@ -815,6 +836,7 @@ app.on("before-quit", () => {
   quitting = true;
   clearInterval(timer);
   clearInterval(quotaTimer);
+  clearInterval(diagnosticTimer);
   codexService?.close();
 });
 app.on("will-quit", () => {

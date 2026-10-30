@@ -212,7 +212,7 @@ function briefing(snapshot, id, now = Date.now()) {
             w &&
             w.state === "reported" &&
             (!w.resetsAt || w.resetsAt > now) &&
-            now - a.at < 600000,
+            now - (w.reportedAt || a.at) < 600000,
         )
         .map((w) => w.remaining),
     ),
@@ -234,6 +234,8 @@ function describe(w, at, now, timezone) {
   if (!w) return "unavailable";
   const due = w.resetsAt && w.resetsAt <= now;
   const stale = now - (w.reportedAt || at) > 600000;
+  if (due || stale)
+    return `unavailable (${due ? "reset time reached; awaiting confirmation" : "stale reading"}; verify usage in the client before planning work)`;
   return `${w.remaining}% ${due || stale ? "last reported remaining" : "remaining"}${w.resetsAt ? ", scheduled reset " + new Date(w.resetsAt).toLocaleString(undefined, { timeZone: timezone }) : ", reset not reported"}${due ? " (reset time reached; awaiting confirmation)" : stale ? " (stale)" : ""}`;
 }
 module.exports = {

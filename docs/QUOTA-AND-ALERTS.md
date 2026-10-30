@@ -23,6 +23,13 @@ SessionStart/UserPromptSubmit supply awareness; tool hooks send it at most once 
 The dashboard separately shows configured status, observed hook calls, and client-output receipts (with the last supplied text). A transport receipt is not proof a model consumed or obeyed a warning. Old warnings are not invented retroactively. Until the host trusts and runs the hooks, Codex protection remains unverified.
 
 ## Verification
+### 2026-10-30 recurrence and stale-value safety
+The owner screenshot showed Codex at 68% current / 4% weekly, while the bubble showed stale 54% / 31% with an expired current reset. Both a direct account API read and the desktop usage tool subsequently agreed at 63% / 3%. The installed monitor again had an unreachable descriptor from yesterday despite visible app processes. Restart restored fresh automatic context, but the recurring lifecycle failure remains unresolved; the previous repair must not be described as sufficient.
+
+A concrete quota-startup defect was reproduced: discovery depended exclusively on the agent-injected PATH, while the ordinary Windows user PATH omitted the native Codex release directory. Native Windows discovery now searches the installed OpenAI/Codex/bin release executables (newest executable first), with explicit override and PATH fallback preserved. Both a regression fixture with empty PATH and a real signed-in quota read using empty PATH succeeded. This corrects executable discovery, not proof of the separate bridge lifecycle cause.
+
+Model briefings now withhold stale/expired percentages and instruct verification in the client. Planning thresholds use each window's reportedAt, preventing a fresh update to one window from making another window's old value actionable. The compact bubble explicitly marks historical percentages OLD and its stale status OFFLINE / OLD VALUES; known fresh zero remains a valid zero. Quota refresh and recurring timers start before the initial collector scan completes so collection cannot gate their startup. A bounded, metadata-only runtime-status.json records boot/heartbeat/collector/API status locally to support diagnosis of the recurrence. It contains no prompts, provider credentials or account identifiers.
+
 ### 2026-10-29 connection incident
 The owner reported no warnings in another Codex chat. The installed helper failed with ENOENT: its descriptor still identified yesterday's process, while the running application had a different process and named pipe. Hook and database records had no new activity for the reported period. The reason the descriptor became stale has not been established. Yesterday's low-quota output receipts do not prove delivery today.
 

@@ -3,13 +3,31 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const readline = require("node:readline");
 const { quotaWindow } = require("./core.cjs");
-async function findCodex() {
-  if (process.env.TOKEN_TRACKER_CODEX_BINARY)
-    return process.env.TOKEN_TRACKER_CODEX_BINARY;
-  for (const dir of (process.env.PATH || "").split(path.delimiter)) {
+async function findCodex({
+  env = process.env,
+  platform = process.platform,
+} = {}) {
+  if (env.TOKEN_TRACKER_CODEX_BINARY) return env.TOKEN_TRACKER_CODEX_BINARY;
+  if (platform === "win32" && env.LOCALAPPDATA) {
+    const root = path.join(env.LOCALAPPDATA, "OpenAI", "Codex", "bin");
+    const installed = [];
+    try {
+      for (const name of await fs.readdir(root)) {
+        if (!/^[a-f0-9]{8,64}$/i.test(name)) continue;
+        const binary = path.join(root, name, "codex.exe");
+        try {
+          const stat = await fs.stat(binary);
+          if (stat.isFile()) installed.push({ binary, at: stat.mtimeMs });
+        } catch {}
+      }
+    } catch {}
+    installed.sort((a, b) => b.at - a.at);
+    if (installed.length) return installed[0].binary;
+  }
+  for (const dir of (env.PATH || "").split(path.delimiter).filter(Boolean)) {
     const candidate = path.join(
       dir,
-      process.platform === "win32" ? "codex.exe" : "codex",
+      platform === "win32" ? "codex.exe" : "codex",
     );
     try {
       if ((await fs.stat(candidate)).isFile()) return candidate;

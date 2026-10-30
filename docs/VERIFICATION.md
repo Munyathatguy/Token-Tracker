@@ -1,5 +1,11 @@
 # Verification — 2026-10-28
 
+## 2026-10-30 stale-value and launch-environment correction
+- 30 tests pass. New regressions cover stale per-window quota withholding/model thresholds and installed native Codex discovery without an injected PATH. Syntax, format and audit checks pass.
+- The account API and desktop usage tool agreed on live percentages; the screenshot's conflicting bubble figures were old readings. A real API read using empty PATH succeeded after native executable discovery was added.
+- Historical compact figures are marked OLD / OFFLINE; model briefings withhold stale/expired percentages. Known fresh zero remains a valid reported zero.
+- Collection no longer gates startup of recurring quota refresh. Private runtime-status.json records bounded startup/heartbeat metadata. The recurring bridge lifecycle failure remains unresolved; neither tests nor a successful restart establish that it will not recur.
+
 ## 2026-10-29 connection repair
 - 28 automated tests pass, including stale descriptor repair with authenticated endpoint verification and explicit disconnected-hook model context. Syntax, formatting and audit checks pass.
 - Rebuilt Windows package passed the native smoke checks with isolated data. The normal application was restarted with existing private history preserved.

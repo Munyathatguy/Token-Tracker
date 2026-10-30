@@ -71,3 +71,35 @@ test("briefing includes quota priority, time and explicitly unavailable readings
   assert.match(b, /allowance.*unavailable/i);
   assert.match(b, /time/i);
 });
+test("stale per-window allowance is withheld from model guidance even if the account was recently updated", () => {
+  const now = Date.now();
+  const snapshot = {
+    sessions: [],
+    accounts: [
+      {
+        client: "Codex",
+        at: now,
+        current: {
+          remaining: 54,
+          state: "reported",
+          reportedAt: now - 900000,
+          resetsAt: now + 10000,
+        },
+        weekly: {
+          remaining: 3,
+          state: "reported",
+          reportedAt: now,
+          resetsAt: now + 900000,
+        },
+      },
+    ],
+  };
+  const b = briefing(snapshot, "", now);
+  assert.doesNotMatch(b, /54%/);
+  assert.match(b, /current unavailable.*stale/i);
+  assert.match(b, /weekly 3%/);
+  assert.match(b, /Capacity is low/);
+  snapshot.accounts[0].weekly.remaining = 90;
+  snapshot.accounts[0].current.remaining = 1;
+  assert.doesNotMatch(briefing(snapshot, "", now), /Capacity is low/);
+});

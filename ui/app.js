@@ -191,7 +191,7 @@ function compactBubble(s) {
     s.sessions.find((x) => !x.stale);
   const pct = (w) =>
     Number.isFinite(w?.remaining)
-      ? `${Math.round(w.remaining)}<small>%</small>`
+      ? `${Math.round(w.remaining)}<small>%${Date.now() - (w.reportedAt || a?.at || 0) > 600000 || (w.resetsAt && w.resetsAt <= Date.now()) ? " OLD" : ""}</small>`
       : '<span class="unavailable" title="Provider has not reported this window">?</span>';
   const stale = !a || Date.now() - a.at > 600000;
   const notice = s.bubble?.temporary
@@ -199,7 +199,7 @@ function compactBubble(s) {
     : preview
       ? "Design preview"
       : stale
-        ? "Stale reading"
+        ? "OFFLINE · OLD VALUES"
         : "Reported";
   return `<section class="compact-bubble"><header class="compact-header"><span class="compact-source"><span class="dot"></span>${esc(a?.client || "Token Tracker")}</span><span class="compact-notice" title="${esc(notice)}">${esc(notice || "Reported")}</span><div class="compact-controls">${quickControls(s)}<button class="icon-btn" data-action="settings" title="Settings" aria-label="Settings">⚙</button><button class="icon-btn" data-mode="expanded" title="Expand bubble" aria-label="Expand bubble">⤢</button><button class="icon-btn" data-action="hide" title="Hide to tray" aria-label="Hide to tray">−</button></div></header><button class="compact-metrics ${s.settings.showContext === false ? "no-context" : ""}" data-action="dashboard" title="Open detailed usage dashboard"><span><small title="${esc(reset(a?.current?.resetsAt))}">Current left</small><strong class="mono">${pct(a?.current)}</strong></span><span><small title="${esc(reset(a?.weekly?.resetsAt))}">Weekly left</small><strong class="mono">${pct(a?.weekly)}</strong></span>${s.settings.showContext !== false ? `<span class="compact-context"><small>Context used</small><b class="mono">${session?.context ? Math.round(session.context.used) + "%" : "—"}</b>${s.settings.showCompactions !== false ? `<em>↻ ${session?.compactions || 0}</em>` : ""}</span>` : ""}</button><footer class="compact-footer">${s.settings.showContext !== false ? `<span class="compact-risk">${spectrum(session || {})}</span>` : ""}<span>${stale ? "stale · " : ""}${[s.settings.showClock !== false ? time(Date.now()) : "", s.settings.showCompactions !== false ? (session?.compactions || 0) + " compactions" : ""].filter(Boolean).join(" · ") || "Shared account allowance"}</span></footer><div class="compact-resets" title="Current reset ${esc(reset(a?.current?.resetsAt))}; weekly reset ${esc(reset(a?.weekly?.resetsAt))}">Reset ${a?.current?.resetsAt ? time(a.current.resetsAt) : "not reported"} · Weekly ${a?.weekly?.resetsAt ? reset(a.weekly.resetsAt) : "not reported"}</div></section>`;
 }

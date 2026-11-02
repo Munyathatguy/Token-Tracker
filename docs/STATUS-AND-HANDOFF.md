@@ -1,5 +1,10 @@
 # Status, challenges and handoff — 2026-10-30
 
+## November 2 operational incident
+Owner reported monitoring had stopped two days earlier. Before restarting, inspection found no Token Tracker processes, an unreachable descriptor, and a last heartbeat at October 30, 22:38 Africa/Johannesburg. Windows reported last boot October 31, 21:25. No matching Token Tracker/Electron crash entry appeared in the inspected Application 1000/1001 events; this does not exclude a crash or establish why the earlier heartbeat stopped. No Token Tracker Windows startup entry was found. Startup remains opt-in, not enabled by default, so monitoring does not automatically return after login. This explains current absence after boot, not the earlier lifecycle gap.
+
+The existing packaged executable was relaunched without changing behaviour. CLI quota reads and automatic model-visible context resumed. Private launch logs: runtime/nov02-live.stdout.log and runtime/nov02-live.stderr.log. A startup opt-in choice was requested from the owner; no authorization is inferred from silence. Prior recurring lifecycle challenges remain open. No mechanical work beyond the existing monitor was ready or needed for this operational check, and no background AI review was scheduled.
+
 ## Core and current delivery objectives
 Reliable current-window and weekly shared account allowance awareness for users and AI, enabling verification, clean stopping and continuation. Context/time/compactions support this objective. Immediate delivery priority is reliable ordinary launches and warnings across chats/restarts. No external deadline is stated.
 

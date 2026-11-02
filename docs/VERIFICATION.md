@@ -1,5 +1,7 @@
 # Verification — 2026-10-28
 
+November 2 pin checks: 31 tests and syntax checks passed. After a minimal native comparison reproduced floating-level failure, the rebuilt live app using screen-saver level showed WS_EX_TOPMOST=true with Codex foreground. Saved pin enabled. Production audit: zero findings; full development audit: 15 moderate build-tool findings, unresolved. Do not carry forward older zero-full-audit claims as current.
+
 Reconciled October 30: [status and handoff](STATUS-AND-HANDOFF.md). Latest implementation a21c184 passed 30 tests, packaged native checks and GitHub run 41020602709. CLI/runtime health rechecked during documentation work. Historical acceptance does not establish sustained reliability; recurring bridge lifecycle failure remains unresolved.
 
 ## 2026-10-30 stale-value and launch-environment correction

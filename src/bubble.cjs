@@ -17,6 +17,26 @@ class BubbleController {
     this.mode = this.preferredMode();
     this.temporary = false;
     this.generation = 0;
+    this.win.on?.("blur", () => {
+      queueMicrotask(() => {
+        if (
+          !this.win.isDestroyed() &&
+          this.win.isVisible() &&
+          (this.preferences().pin || this.temporary)
+        )
+          this.enforcePin();
+      });
+    });
+    this.win.on?.("show", () => this.enforcePin());
+  }
+  enforcePin() {
+    if (this.win.isDestroyed()) return;
+    const pinned = this.temporary || this.preferences().pin;
+    this.win.setAlwaysOnTop(
+      pinned,
+      process.platform === "win32" ? "screen-saver" : "floating",
+    );
+    if (pinned && this.win.isVisible()) this.win.moveTop?.();
   }
   cancel() {
     this.generation++;
@@ -51,7 +71,7 @@ class BubbleController {
     );
     this.win.setBounds({ x, y, width, height });
     this.win.setOpacity(p.opacity);
-    this.win.setAlwaysOnTop(this.temporary || p.pin);
+    this.enforcePin();
     this.changed();
   }
   show(mode = this.preferredMode()) {

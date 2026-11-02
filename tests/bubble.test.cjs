@@ -14,10 +14,18 @@ function setup() {
     popupSeconds: 5,
   };
   const w = {
+    handlers: {},
+    on: (event, fn) => (w.handlers[event] = fn),
+    moveTop: () => {
+      w.raised = (w.raised || 0) + 1;
+    },
     getBounds: () => ({ x: 100, y: 100, width: 350, height: 440 }),
     setBounds: (b) => (w.bounds = b),
     setOpacity: (n) => (w.opacity = n),
-    setAlwaysOnTop: (b) => (w.pin = b),
+    setAlwaysOnTop: (b, level) => {
+      w.pin = b;
+      w.level = level;
+    },
     isVisible: () => visible,
     show: () => {
       visible = true;
@@ -56,6 +64,28 @@ test("a delivery while hidden shows compact without stealing focus and returns t
   assert.equal(w.isVisible(), false);
   assert.equal(c.mode, "expanded");
   assert.equal(w.pin, false);
+});
+test("pinned bubble reasserts stacking on focus loss without taking focus", async () => {
+  const { c, w, prefs, focused } = setup();
+  prefs.pin = true;
+  c.reconcile();
+  w.pin = false;
+  w.handlers.blur();
+  await Promise.resolve();
+  assert.equal(w.pin, true);
+  assert.equal(
+    w.level,
+    process.platform === "win32" ? "screen-saver" : "floating",
+  );
+  assert.ok(w.raised > 0);
+  assert.equal(focused(), 0);
+  prefs.pin = false;
+  c.apply();
+  const raised = w.raised;
+  w.handlers.blur();
+  await Promise.resolve();
+  assert.equal(w.pin, false);
+  assert.equal(w.raised, raised);
 });
 test("disabled popups stay hidden and an explicitly open expanded panel is not collapsed", () => {
   const { c, w, prefs, expire } = setup();

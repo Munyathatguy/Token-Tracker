@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-03 independent window warnings
+- Separate current-window and weekly warning/prepare/wrap thresholds and enable switches for model prompts and desktop low-allowance alerts.
+- Preserve existing current-window settings; weekly defaults 10% / 5% / 2%.
+- Use scope-specific stages for hook change detection and quota colours; retain factual readings and independent reset controls.
+- Add policy, persistence, briefing, alarm and native settings-form regression coverage.
+
 ## 2026-10-30 source corrections (package remains 0.3.0)
 - Native Codex discovery independent of agent PATH; empty-PATH regression/live read verified.
 - Withhold stale model percentages; use per-window timestamps; mark historical compact values OLD / OFFLINE.

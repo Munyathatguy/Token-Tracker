@@ -751,6 +751,20 @@ app
       result.visibilityControls = await bubble.webContents.executeJavaScript(
         '!document.querySelector(".compact-context") && !document.querySelector(".compact-risk")',
       );
+      await dashboard.webContents.executeJavaScript(
+        `(()=>{const f=document.querySelector('#preferences-form');f.elements.weeklyWarnRemaining.value=9;f.elements.weeklyPrepareRemaining.value=4;f.elements.weeklyWrapRemaining.value=1;f.elements.weeklyWarningsEnabled.checked=false;f.elements.currentWarningsEnabled.checked=true;f.requestSubmit();})()`,
+      );
+      await new Promise((r) => setTimeout(r, 200));
+      const scopedSettings = store.snapshot().settings;
+      result.separateWindows =
+        scopedSettings.weeklyWarnRemaining === 9 &&
+        scopedSettings.weeklyPrepareRemaining === 4 &&
+        scopedSettings.weeklyWrapRemaining === 1 &&
+        scopedSettings.weeklyWarningsEnabled === false &&
+        scopedSettings.currentWarningsEnabled === true &&
+        scopedSettings.alertPrepareRemaining === 15;
+      if (!result.separateWindows)
+        throw Error("Independent window settings did not persist");
       const soundTest = {
         id: "silent-native-audio-test:" + Date.now(),
         at: Date.now(),

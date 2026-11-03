@@ -152,7 +152,7 @@ function quota(w, a) {
   const minutes = w?.resetsAt
     ? Math.max(0, Math.ceil((w.resetsAt - Date.now()) / 60000))
     : null;
-  return `<div class="quota-number mono">${n === null ? "Not reported" : esc(n) + "%"}<small>${n === null ? "" : due || stale ? "last reported left" : "remaining"}</small></div><div class="bar quota-rail ${n === null ? "unknown" : n <= (live?.settings.alertWrapRemaining ?? 8) ? "red" : n <= (live?.settings.alertWarnRemaining ?? 30) ? "amber" : ""}"><span style="width:${n ?? 0}%"></span></div><div class="reset">${w?.resetsAt ? "Reset " + reset(w.resetsAt) + (due ? " · time reached, checking" : minutes < 60 ? " · in " + minutes + "m" : " · in " + Math.floor(minutes / 60) + "h " + (minutes % 60) + "m") : "Reset not reported"}</div>${stale ? '<div class="tiny muted">Last report ' + age(at) + "; retained independently</div>" : ""}`;
+  return `<div class="quota-number mono">${n === null ? "Not reported" : esc(n) + "%"}<small>${n === null ? "" : due || stale ? "last reported left" : "remaining"}</small></div><div class="bar quota-rail ${n === null ? "unknown" : n <= (w === a?.weekly ? (live?.settings.weeklyWrapRemaining ?? 2) : (live?.settings.alertWrapRemaining ?? 8)) ? "red" : n <= (w === a?.weekly ? (live?.settings.weeklyWarnRemaining ?? 10) : (live?.settings.alertWarnRemaining ?? 30)) ? "amber" : ""}"><span style="width:${n ?? 0}%"></span></div><div class="reset">${w?.resetsAt ? "Reset " + reset(w.resetsAt) + (due ? " · time reached, checking" : minutes < 60 ? " · in " + minutes + "m" : " · in " + Math.floor(minutes / 60) + "h " + (minutes % 60) + "m") : "Reset not reported"}</div>${stale ? '<div class="tiny muted">Last report ' + age(at) + "; retained independently</div>" : ""}`;
 }
 // Styles set in generated markup are restricted to numeric percentages from normalised data.
 function spectrum(s) {
@@ -228,9 +228,12 @@ function settingsView(s) {
     .join(
       "",
     )}</select></label><label>Colour theme<select class="field" name="theme">${["dark", "light", "system"].map((k) => `<option value="${k}" ${p.theme === k ? "selected" : ""}>${k[0].toUpperCase() + k.slice(1)}</option>`).join("")}</select></label><label>Overall compact size <output id="scale-value">${Math.round(p.compactScale * 100)}%</output><input class="field" name="compactScale" type="range" min="80" max="140" step="10" value="${Math.round(p.compactScale * 100)}"><small class="muted">Scales the whole strip, including text. Quick A− / A+ controls are on the bubble.</small></label><label>Compact width <output id="width-value">${p.compactWidth}px</output><input class="field" name="compactWidth" type="range" min="240" max="380" step="10" value="${p.compactWidth}"><small class="muted">Default 260 × 96 logical pixels. Windows display scaling also affects size.</small></label><label>Bubble opacity <output id="opacity-value">${Math.round(p.opacity * 100)}%</output><input class="field" name="opacity" type="range" min="35" max="100" step="1" value="${Math.round(p.opacity * 100)}"><small class="muted">35% is more transparent; 100% is fully opaque. Dashboard stays opaque.</small></label><label>Pop-up duration<select class="field" name="popupSeconds">${[2, 3, 5, 8, 10, 15].map((n) => `<option value="${n}" ${p.popupSeconds === n ? "selected" : ""}>${n} seconds</option>`).join("")}</select></label><label>Display timezone<input name="timezone" class="field" value="${esc(p.timezone)}"></label><label>Account shown in bubble<select class="field" name="preferredAccountId"><option value="">Automatic · latest reported</option>${s.accounts.map((a, i) => `<option value="${esc(a.id)}" ${a.id === p.preferredAccountId ? "selected" : ""}>${esc(a.client)} · profile ${i + 1}</option>`).join("")}</select></label><label>Session rows in expanded view<select class="field" name="sessionRows">${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${p.sessionRows === n ? "selected" : ""}>${n} session${n === 1 ? "" : "s"}</option>`).join("")}</select></label>${[
-    ["alertWarnRemaining", "Warning"],
-    ["alertPrepareRemaining", "Prepare to finish"],
-    ["alertWrapRemaining", "Wrap up"],
+    ["alertWarnRemaining", "Current window — warning"],
+    ["alertPrepareRemaining", "Current window — prepare to finish"],
+    ["alertWrapRemaining", "Current window — wrap up"],
+    ["weeklyWarnRemaining", "Weekly — warning"],
+    ["weeklyPrepareRemaining", "Weekly — prepare to finish"],
+    ["weeklyWrapRemaining", "Weekly — wrap up"],
   ]
     .map(
       ([k, l]) =>
@@ -252,6 +255,11 @@ function settingsView(s) {
       "Briefly show the strip on observed AI prompt / response activity",
     ],
     ["notifications", "Desktop notifications when allowance is low"],
+    [
+      "currentWarningsEnabled",
+      "Current-window low-allowance prompts and warnings",
+    ],
+    ["weeklyWarningsEnabled", "Weekly low-allowance prompts and warnings"],
     ["notifyOnReset", "Nudge when a scheduled reset time is reached"],
     [
       "resetAlarmForAll",
@@ -314,7 +322,7 @@ function overview(s) {
       )
       .join("") ||
     '<p class="muted">Activity appears when a connected client reports events.</p>'
-  }</section>${details(s) || `<section class="panel"><span class="eyebrow">Leave a clean stopping point</span><h2 style="margin-top:12px">Enough room to finish well.</h2><p class="muted">Choose a session to save verified progress or record a download that will continue running.</p><p class="tiny muted">Warnings begin at ${s.settings.alertWarnRemaining}% remaining. Prepare at ${s.settings.alertPrepareRemaining}%; wrap up at ${s.settings.alertWrapRemaining}%. These are planning signals, not guaranteed time remaining.</p><button data-action="copy">Copy current AI update</button></section>`}</div>`;
+  }</section>${details(s) || `<section class="panel"><span class="eyebrow">Leave a clean stopping point</span><h2 style="margin-top:12px">Enough room to finish well.</h2><p class="muted">Choose a session to save verified progress or record a download that will continue running.</p><p class="tiny muted">Current-window warnings begin at ${s.settings.alertWarnRemaining}% remaining. Prepare at ${s.settings.alertPrepareRemaining}%; wrap up at ${s.settings.alertWrapRemaining}%. Weekly thresholds: ${s.settings.weeklyWarnRemaining}% warning / ${s.settings.weeklyPrepareRemaining}% prepare / ${s.settings.weeklyWrapRemaining}% wrap. Each window can be enabled separately in Settings. These are planning signals, not guaranteed time remaining.</p><button data-action="copy">Copy current AI update</button></section>`}</div>`;
 }
 function integrations(s) {
   return `<section class="panel"><h2>Client connections</h2><div class="integration"><div class="row"><h3>Codex account readings</h3><span class="tag">${esc(s.codexService?.state || "Starting")}</span></div><p>Independent account-API refresh every minute, including when a model is idle or out of allowance. Last refresh: ${age(s.codexService?.lastRefresh)}. Local session records supply per-chat context and activity.</p><button data-action="refreshQuota">Refresh usage now</button>${s.unreportedBuckets?.length ? `<p class="muted">The provider also reported metadata-only buckets (${s.unreportedBuckets.map((b) => esc(b.bucket)).join(", ")}). These are not additional accounts and do not contain current/weekly allowance figures, so they do not get usage cards.</p>` : ""}</div><div class="integration"><div class="row"><h3>Codex model updates</h3><span class="tag">${s.lastCodexHook ? "HOOK OBSERVED" : s.codexInstalled ? "TRUST REVIEW NEEDED" : "NOT CONNECTED"}</span></div><p>Quota monitoring and model delivery are separate. Configure the reversible lifecycle hooks, review and trust their exact definitions through Codex /hooks, then resume the chat. Prompt/start updates are supplied every time; tool-event updates are throttled to once per minute or a warning-level change. Stop never forces another model turn.</p><p>${s.lastCodexDelivery ? "Latest client output: " + age(s.lastCodexDelivery.at) : "No Codex model-facing output has been observed yet."}</p><button id="install-codex" ${preview ? "disabled" : ""}>${s.codexInstalled ? "Remove Codex hooks" : "Configure Codex model updates"}</button></div><div class="integration"><div class="row"><h3>Claude Code</h3><span class="tag">${s.claudeInstalled ? "INSTALLED · AWAITING EVENTS" : "NOT INSTALLED"}</span></div><p>Connect the official statusline feed and lifecycle hooks. Existing statusline output is preserved and settings are backed up. Requires Node on PATH.</p><button id="install-claude" ${preview ? "disabled" : ""}>${s.claudeInstalled ? "Remove Claude integration" : "Connect Claude Code"}</button></div><div class="integration"><h3>Data and privacy</h3><p>Only session/usage metadata and your notes are stored locally. Provider credentials and full messages are not collected. The account service uses Codex's existing sign-in without reading credential files.</p><label for="timezone-input">Display timezone</label><input class="field" id="timezone-input" value="${esc(zone())}"><button id="save-timezone">Save timezone</button></div></section>`;
@@ -355,6 +363,9 @@ function readPreferencesForm(form) {
     "alertWarnRemaining",
     "alertPrepareRemaining",
     "alertWrapRemaining",
+    "weeklyWarnRemaining",
+    "weeklyPrepareRemaining",
+    "weeklyWrapRemaining",
   ])
     p[k] = Number(form.elements[k].value);
   for (const k of [
@@ -370,6 +381,8 @@ function readPreferencesForm(form) {
     "soundOnReset",
     "soundOnExhaustion",
     "soundOnWarning",
+    "currentWarningsEnabled",
+    "weeklyWarningsEnabled",
   ])
     p[k] = form.elements[k].checked;
   return p;

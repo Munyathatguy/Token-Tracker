@@ -1,3 +1,4 @@
+const { scopePolicy } = require("./preferences.cjs");
 class AlertEngine {
   constructor(store) {
     this.store = store;
@@ -9,6 +10,7 @@ class AlertEngine {
     for (const a of s.accounts)
       for (const scope of ["current", "weekly"]) {
         const w = a[scope];
+        const policy = scopePolicy(p, scope);
         if (!w) continue;
         const stamp = w.reportedAt || a.at;
         const base = a.id + ":" + scope + ":" + (w.resetsAt || "unknown");
@@ -40,27 +42,21 @@ class AlertEngine {
           if (this.store.recordAlert(alert)) out.push(alert);
         };
         const due = w.resetsAt && w.resetsAt <= now;
-        if (!due && now - stamp < 600000) {
-          if (
-            w.remaining > p.alertPrepareRemaining &&
-            w.remaining <= p.alertWarnRemaining
-          )
+        if (policy.enabled && !due && now - stamp < 600000) {
+          if (w.remaining > policy.prepare && w.remaining <= policy.warn)
             emit(
               "warning",
               `${a.client} ${scope}: ${w.remaining}% left — usage warning`,
               "Plan remaining work around the shared account allowance.",
               p.soundOnWarning,
             );
-          if (
-            w.remaining > p.alertWrapRemaining &&
-            w.remaining <= p.alertPrepareRemaining
-          )
+          if (w.remaining > policy.wrap && w.remaining <= policy.prepare)
             emit(
               "prepare",
               `${a.client} ${scope}: ${w.remaining}% left — prepare to finish`,
               "Finish essential changes, verify work and prepare a handoff. This is a user alert, not evidence of model delivery.",
             );
-          if (w.remaining > 0 && w.remaining <= p.alertWrapRemaining)
+          if (w.remaining > 0 && w.remaining <= policy.wrap)
             emit(
               "wrap",
               `${a.client} ${scope}: ${w.remaining}% left — wrap up`,
@@ -82,7 +78,7 @@ class AlertEngine {
         if (
           due &&
           p.notifyOnReset &&
-          (w.remaining <= p.alertPrepareRemaining || p.resetAlarmForAll)
+          (w.remaining <= policy.prepare || p.resetAlarmForAll)
         )
           emit(
             "reset-due",

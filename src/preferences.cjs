@@ -20,6 +20,11 @@ const DEFAULTS = Object.freeze({
   alertWarnRemaining: 30,
   alertPrepareRemaining: 15,
   alertWrapRemaining: 8,
+  currentWarningsEnabled: true,
+  weeklyWarningsEnabled: true,
+  weeklyWarnRemaining: 10,
+  weeklyPrepareRemaining: 5,
+  weeklyWrapRemaining: 2,
   notifyOnReset: true,
   resetAlarmForAll: false,
   soundOnReset: false,
@@ -48,6 +53,8 @@ function validatePreferences(patch) {
         "soundOnReset",
         "soundOnExhaustion",
         "soundOnWarning",
+        "currentWarningsEnabled",
+        "weeklyWarningsEnabled",
       ].includes(k)
     ) {
       if (typeof v !== "boolean") throw Error(k + " must be a boolean");
@@ -71,6 +78,9 @@ function validatePreferences(patch) {
       alertWarnRemaining: [1, 99],
       alertPrepareRemaining: [1, 99],
       alertWrapRemaining: [1, 99],
+      weeklyWarnRemaining: [1, 99],
+      weeklyPrepareRemaining: [1, 99],
+      weeklyWrapRemaining: [1, 99],
     };
     if (
       ranges[k] &&
@@ -83,6 +93,9 @@ function validatePreferences(patch) {
         "alertWarnRemaining",
         "alertPrepareRemaining",
         "alertWrapRemaining",
+        "weeklyWarnRemaining",
+        "weeklyPrepareRemaining",
+        "weeklyWrapRemaining",
       ].includes(k) &&
       !Number.isInteger(v)
     )
@@ -114,4 +127,16 @@ function bubbleSize(prefs, mode = prefs.bubbleMode) {
           height: Math.round(96 * (prefs.compactScale || 1)),
         };
 }
-module.exports = { DEFAULTS, validatePreferences, bubbleSize };
+function scopePolicy(p = {}, scope = "current") {
+  const settings = { ...DEFAULTS, ...p };
+  const weekly = scope === "weekly";
+  return {
+    enabled:
+      settings[weekly ? "weeklyWarningsEnabled" : "currentWarningsEnabled"],
+    warn: settings[weekly ? "weeklyWarnRemaining" : "alertWarnRemaining"],
+    prepare:
+      settings[weekly ? "weeklyPrepareRemaining" : "alertPrepareRemaining"],
+    wrap: settings[weekly ? "weeklyWrapRemaining" : "alertWrapRemaining"],
+  };
+}
+module.exports = { DEFAULTS, validatePreferences, bubbleSize, scopePolicy };

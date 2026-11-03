@@ -2,7 +2,7 @@ const net = require("node:net");
 const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { normaliseClaude, briefing } = require("./core.cjs");
+const { normaliseClaude, briefing, planningStage } = require("./core.cjs");
 async function startBridge(store, dir, onDelivery = () => {}) {
   const pending = new Map();
   function issue(client, sessionId, summary = "") {
@@ -134,18 +134,8 @@ async function startBridge(store, dir, onDelivery = () => {}) {
               .filter((a) => a.client === "Codex")
               .map((a) => [
                 a.id,
-                ...[a.current, a.weekly].map((w) =>
-                  !w
-                    ? "unknown"
-                    : w.remaining === 0
-                      ? "exhausted"
-                      : w.remaining <= snap.settings.alertWrapRemaining
-                        ? "wrap"
-                        : w.remaining <= snap.settings.alertPrepareRemaining
-                          ? "prepare"
-                          : w.remaining <= snap.settings.alertWarnRemaining
-                            ? "warning"
-                            : "normal",
+                ...["current", "weekly"].map((scope) =>
+                  planningStage(a[scope], a.at, snap.settings, scope, now),
                 ),
               ]),
           );

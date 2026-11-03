@@ -183,6 +183,13 @@ class Store {
       throw Error(
         "Wrap-up threshold must be below prepare, and prepare below warning",
       );
+    if (!(
+      next.weeklyWrapRemaining < next.weeklyPrepareRemaining &&
+      next.weeklyPrepareRemaining < next.weeklyWarnRemaining
+    ))
+      throw Error(
+        "Weekly wrap-up threshold must be below prepare, and prepare below warning",
+      );
     this.put("settings", "preferences", next);
     return next;
   }

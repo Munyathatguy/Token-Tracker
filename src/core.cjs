@@ -1,4 +1,5 @@
 const path = require("node:path");
+const { scopePolicy } = require("./preferences.cjs");
 const finite = (n) => typeof n === "number" && Number.isFinite(n);
 function quotaWindow(raw, now = Date.now()) {
   const used = raw?.used_percent ?? raw?.used_percentage ?? raw?.usedPercent;
@@ -204,31 +205,55 @@ function briefing(snapshot, id, now = Date.now()) {
     (a) =>
       `${a.client} shared allowance: current ${describe(a.current, a.at, now, timezone)}; weekly ${describe(a.weekly, a.at, now, timezone)}`,
   );
-  const minimum = Math.min(
-    ...accounts.flatMap((a) =>
-      [a.current, a.weekly]
-        .filter(
-          (w) =>
-            w &&
-            w.state === "reported" &&
-            (!w.resetsAt || w.resetsAt > now) &&
-            now - (w.reportedAt || a.at) < 600000,
-        )
-        .map((w) => w.remaining),
-    ),
-  );
+  const guidance = accounts
+    .flatMap((a) =>
+      ["current", "weekly"].map((scope) => {
+        const stage = planningStage(
+          a[scope],
+          a.at,
+          snapshot.settings,
+          scope,
+          now,
+        );
+        const label = scope === "current" ? "Current-window" : "Weekly";
+        return ["wrap", "exhausted"].includes(stage)
+          ? ` ${label} allowance: Capacity is low: finish verification and save a checkpoint, unfinished work and background-job details.`
+          : stage === "prepare"
+            ? ` ${label} allowance: Prepare a verified stopping point and handoff before starting large new work.`
+            : stage === "warning"
+              ? ` ${label} allowance is approaching its configured warning threshold; plan workload for that window.`
+              : "";
+      }),
+    )
+    .join("");
   return (
     `[TOKEN TRACKER] Local time: ${new Date(now).toLocaleString(undefined, { timeZone: timezone })} (${timezone}). ` +
     (lines.join(" | ") || "Current and weekly allowance unavailable.") +
     (s
       ? ` | Context: ${s.context ? Math.round(s.context.used) + "% used" : "unavailable"}; compactions observed: ${s.compactions || 0}.`
       : "") +
-    (minimum <= (snapshot.settings?.alertWrapRemaining ?? 8)
-      ? " Capacity is low: finish verification and save a checkpoint, unfinished work and background-job details."
-      : minimum <= (snapshot.settings?.alertPrepareRemaining ?? 15)
-        ? " Prepare a verified stopping point and handoff before starting large new work."
-        : "")
+    guidance
   );
+}
+function planningStage(w, at, p, scope, now = Date.now()) {
+  const policy = scopePolicy(p, scope);
+  if (!policy.enabled) return "disabled";
+  if (
+    !w ||
+    w.state !== "reported" ||
+    (w.resetsAt && w.resetsAt <= now) ||
+    now - (w.reportedAt || at) >= 600000
+  )
+    return "unknown";
+  return w.remaining === 0
+    ? "exhausted"
+    : w.remaining <= policy.wrap
+      ? "wrap"
+      : w.remaining <= policy.prepare
+        ? "prepare"
+        : w.remaining <= policy.warn
+          ? "warning"
+          : "normal";
 }
 function describe(w, at, now, timezone) {
   if (!w) return "unavailable";
@@ -239,6 +264,7 @@ function describe(w, at, now, timezone) {
   return `${w.remaining}% ${due || stale ? "last reported remaining" : "remaining"}${w.resetsAt ? ", scheduled reset " + new Date(w.resetsAt).toLocaleString(undefined, { timeZone: timezone }) : ", reset not reported"}${due ? " (reset time reached; awaiting confirmation)" : stale ? " (stale)" : ""}`;
 }
 module.exports = {
+  planningStage,
   quotaWindow,
   contextInfo,
   risk,

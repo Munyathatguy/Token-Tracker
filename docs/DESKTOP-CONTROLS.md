@@ -1,5 +1,7 @@
 # Desktop controls (v0.2)
 
+November 3: low-allowance warning/prepare/wrap thresholds are separate for current-window and weekly allowance. Settings includes an independent enable switch for each scope, affecting desktop low-allowance warnings and AI planning prompts, not quota visibility or separately configured reset nudges. Existing current-window thresholds are preserved. Weekly defaults are 10% warning / 5% prepare / 2% wrap; current-window defaults remain 30% / 15% / 8%. Raw quota percentages remain visible to the model even when that scope's planning prompts are disabled. Current-window allowance is shared account usage, not a per-chat token allocation.
+
 November 2 pin correction: pin applies to the floating bubble, not the dashboard. Windows uses an explicit topmost level and reasserts it on show/visible focus loss without taking focus; hidden/tray windows are not raised. The rebuilt bubble's native WS_EX_TOPMOST flag was verified while another app had focus. Turning pin off remains supported.
 
 October 30 update: [status and handoff](STATUS-AND-HANDOFF.md). Trusted Codex lifecycle delivery has been verified live, superseding the disconnected-Codex statement below, but recurring bridge failures remain unresolved. Alarm settings include reset nudges, opt-in exhaustion/reset/early-warning sounds, volume and Test alarm sound. OS mute/routing applies; prepare/wrap notices remain silent. Historical compact figures say OLD / OFFLINE; stale/expired percentages are withheld from AI guidance.

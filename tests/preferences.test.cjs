@@ -85,3 +85,21 @@ test("visibility and planning thresholds are validated as a coherent set", () =>
   assert.throws(() => s.updatePreferences({ toString: "bad" }));
   s.close();
 });
+test("weekly thresholds and switches are independent of existing current-window settings", () => {
+  const s = new Store(":memory:");
+  s.updatePreferences({
+    weeklyWarnRemaining: 7,
+    weeklyPrepareRemaining: 3,
+    weeklyWrapRemaining: 1,
+    currentWarningsEnabled: true,
+    weeklyWarningsEnabled: false,
+  });
+  assert.equal(s.snapshot().settings.alertPrepareRemaining, 15);
+  assert.equal(s.snapshot().settings.weeklyWarningsEnabled, false);
+  assert.throws(
+    () => s.updatePreferences({ weeklyPrepareRemaining: 8 }),
+    /below/,
+  );
+  assert.throws(() => s.updatePreferences({ weeklyWrapRemaining: 1.5 }));
+  s.close();
+});

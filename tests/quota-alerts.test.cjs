@@ -65,3 +65,21 @@ test("warnings, exhaustion and reset-due alarms are durable, independent and ded
   assert.ok(s.snapshot().alerts.length);
   s.close();
 });
+test("weekly desktop warning stages and disable switch do not affect the current window", () => {
+  const s = new Store(":memory:");
+  const now = Date.now();
+  s.upsertAccount(reading(now, 70, 15));
+  const engine = new AlertEngine(s);
+  assert.equal(engine.evaluate(now).length, 0);
+  s.upsertAccount(reading(now + 1, 70, 4));
+  assert.equal(
+    engine.evaluate(now + 1).find((x) => x.scope === "weekly").kind,
+    "prepare",
+  );
+  s.updatePreferences({ weeklyWarningsEnabled: false });
+  s.upsertAccount(reading(now + 2, 5, 1));
+  const notices = engine.evaluate(now + 2);
+  assert.ok(notices.some((x) => x.scope === "current" && x.kind === "wrap"));
+  assert.ok(!notices.some((x) => x.scope === "weekly"));
+  s.close();
+});

@@ -71,6 +71,34 @@ test("briefing includes quota priority, time and explicitly unavailable readings
   assert.match(b, /allowance.*unavailable/i);
   assert.match(b, /time/i);
 });
+test("weekly 15 percent does not trigger current-window preparation; scope switches control prompts", () => {
+  const now = Date.now();
+  const window = (remaining) => ({
+    remaining,
+    state: "reported",
+    reportedAt: now,
+    resetsAt: now + 60000,
+  });
+  const s = {
+    settings: {},
+    sessions: [],
+    accounts: [
+      { client: "Codex", at: now, current: window(70), weekly: window(15) },
+    ],
+  };
+  assert.doesNotMatch(
+    briefing(s, "", now),
+    /Prepare a verified|Capacity is low/,
+  );
+  s.accounts[0].current = window(5);
+  assert.match(briefing(s, "", now), /current.*Capacity is low/i);
+  s.settings.currentWarningsEnabled = false;
+  assert.doesNotMatch(briefing(s, "", now), /Capacity is low/);
+  s.accounts[0].weekly = window(1);
+  assert.match(briefing(s, "", now), /weekly.*Capacity is low/i);
+  s.settings.weeklyWarningsEnabled = false;
+  assert.doesNotMatch(briefing(s, "", now), /Capacity is low/);
+});
 test("stale per-window allowance is withheld from model guidance even if the account was recently updated", () => {
   const now = Date.now();
   const snapshot = {
@@ -98,7 +126,7 @@ test("stale per-window allowance is withheld from model guidance even if the acc
   assert.doesNotMatch(b, /54%/);
   assert.match(b, /current unavailable.*stale/i);
   assert.match(b, /weekly 3%/);
-  assert.match(b, /Capacity is low/);
+  assert.match(b, /Weekly allowance: Prepare a verified/);
   snapshot.accounts[0].weekly.remaining = 90;
   snapshot.accounts[0].current.remaining = 1;
   assert.doesNotMatch(briefing(snapshot, "", now), /Capacity is low/);
